@@ -1,11 +1,12 @@
 from enum import Enum
-from time import sleep
+from time import sleep, time
 from log import *
 
 import serial
 
 onLidarRev=None
-TERKEP_DISTANCE:list[float]=[-1]*360
+onLoop=None
+DISTANCE_MAP:list[float]=[-1]*360
 TERKEP_INTENSITY:list[int]=[0]*360
 
 class STATE(Enum):
@@ -18,13 +19,13 @@ errors=0
 PACKET_SIZE=47
 byte_packet=[0]*PACKET_SIZE
 count:int=0
-
+t0=time()
 s = serial.Serial(
     port="/dev/ttyAMA0", baudrate=230400, bytesize=8, timeout=2, stopbits=serial.STOPBITS_ONE, parity="N",
 )
 
 def feldolgoz_packet(packet_in:list):
-    global TERKEP_DISTANCE
+    global DISTANCE_MAP
     start_angle=packet_in[5]*256+packet_in[4]
     end_angle=packet_in[43]*256+packet_in[42]
     step:float=(end_angle-start_angle+360*1000)%36000/100/(12-1)
@@ -32,7 +33,7 @@ def feldolgoz_packet(packet_in:list):
         distance:float=(packet_in[7+i*3]*256+packet_in[6+i*3])/10
         intensity:int=packet_in[8+i*3]
         angle:int=round(start_angle/100+step*i)%360
-        TERKEP_DISTANCE[angle]=distance
+        DISTANCE_MAP[angle]=distance
         TERKEP_INTENSITY[angle]=intensity
     if end_angle<start_angle:
         # print("ea: "+str(end_angle)+" sa: "+str(start_angle))
@@ -41,8 +42,14 @@ def feldolgoz_packet(packet_in:list):
 
 
 def read_data():
+    global t0
     while True:
+
         feldolgoz_byte((s.read()[0]))
+        if time()>=t0+0.01 and onLoop!=None:
+            onLoop()
+            t0=time()
+
         # print(TERKEP_DISTANCE)
         # print(errors)
 
@@ -75,8 +82,8 @@ def feldolgoz_byte(byte:int):
             act_state=STATE.HEADER
             count=0
             feldolgoz_packet(byte_packet)
-LIDAR_DANGERZONE_START=134
-LIDAR_DANGERZONE_END=226
+LIDAR_DANGERZONE_START=-130
+LIDAR_DANGERZONE_END=130
 
 
 def startLidarService():

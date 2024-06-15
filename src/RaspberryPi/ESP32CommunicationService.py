@@ -3,15 +3,18 @@ from time import sleep
 from Reader import I2CReader
 from log import *
 
-COMMAND_COMMAND_STEER=6
-COMMAND_SYNC=17
-COMMAND_HEARTBEAT=7
-COMMAND_LOG=8
-COMMAND_SET_VMODE=9
-COMMAND_SET_TARGETSPEED=10
+CMD_STEER=6
+CMD_SYNC=17
+CMD_HEARTBEAT=7
+CMD_LOG=8
+CMD_SET_VMODE=9
+CMD_SET_TARGETSPEED=10
+CMD_SET_SMODE=18
 CMD_SET_BREAKPERCENT=19
 CMD_SET_TARGET_YAW=20
-CMD_SET_SMODE=18
+CMD_SET_SERVO_MAX=21
+CMD_SET_SERVO_MIN=22
+CMD_SET_SERVO_CENT=23
 
 CMD_DATA_POSL=11
 CMD_DATA_POSR=12
@@ -19,6 +22,7 @@ CMD_DATA_POSAVG=13
 CMD_DATA_VMODE=14
 CMD_DATA_SPEED=15
 CMD_DATA_GYRO=16
+CMD_DATA_US=24
 
 SYNC_CODE=18
 
@@ -45,14 +49,14 @@ def sync():
     success=False
     while not success:
         log.warning("sync attempt failed")
-        success=(requestData(COMMAND_SYNC))==SYNC_CODE
+        success=(requestData(CMD_SYNC))==SYNC_CODE
     log.info("sync success")
     heartbeat_thread = threading.Thread(target=beat)
     heartbeat_thread.start()
 def beat():
     while True:
         sleep(0.1)
-        sendCommand(COMMAND_HEARTBEAT)
+        sendCommand(CMD_HEARTBEAT)
 def requestData(command:int) -> int:
     ESP32LOCK.acquire()
     rt=bus.readInt(command)
@@ -66,18 +70,31 @@ def updData(command:int):
     #     pass
         # i2cDict
     i2cDict[command]=requestData(command)
-
+def getLPos()->int:
+    return requestData(CMD_DATA_POSL)
+def getRPos()->int:
+    return requestData(CMD_DATA_POSR)
 def getAvgPos()->int:
     return requestData(CMD_DATA_POSAVG)
 def setBreakForce(force:int):
     sendCommand(CMD_SET_BREAKPERCENT,force)
 def setSpeed(speed:int):
-    sendCommand(COMMAND_SET_TARGETSPEED,int(speed))
+    sendCommand(CMD_SET_TARGETSPEED,int(speed))
 def setVMode(vMode:int):
-    sendCommand(COMMAND_SET_VMODE,vMode)
+    sendCommand(CMD_SET_VMODE,vMode)
 def setSteerMode(sm:int):
     sendCommand(CMD_SET_SMODE,sm)
 def getSpeed()->int:
     return requestData(CMD_DATA_SPEED)
 def getVMode()->int:
     return requestData(CMD_DATA_VMODE)
+def setServoMax(sMax):
+    sendCommand(CMD_SET_SERVO_MAX,sMax)
+def setServoMin(sMin):
+    sendCommand(CMD_SET_SERVO_MIN,sMin)
+def setServoCent(sCent):
+    sendCommand(CMD_SET_SERVO_CENT,sCent)
+def steer(percentage):
+    sendCommand(CMD_STEER,int(percentage))
+def getRawUS()->float:
+    return requestData(CMD_DATA_US)/100
