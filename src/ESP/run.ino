@@ -2,11 +2,11 @@
 #include <Wire.h> //I2C communication library
 #include "Adafruit_BNO08x_RVC.h" //Gyroscope library
 
-#define A_PIN_L 36 //Left motor encoder A pin
-#define B_PIN_L 39 //Left motor encoder B pin
+#define B_PIN_L 36 //Left motor encoder A pin
+#define A_PIN_L 39 //Left motor encoder B pin
 #define PWM_PIN_L 21 //Left motor PWM pin (speed control)
-#define BACKWARD_PIN 12 //Backward pin (set to HIGH to drive motors backward)
-#define FORWARD_PIN 14 //Forward pin (set to HIGH to drive motors forward)
+#define BACKWARD_PIN 14 //Backward pin (set to HIGH to drive motors backward)
+#define FORWARD_PIN 12 //Forward pin (set to HIGH to drive motors forward)
 #define A_PIN_R 35 //Right motor encoder A pin
 #define B_PIN_R 34 //Right motor encoder B pin
 #define PWM_PIN_R 16 //Right motor PWM pin (speed control)
@@ -16,10 +16,9 @@
 #define I2C_SCL_PIN 26 //I2C communication SCL pin (with raspberry)
 #define IMU_RX_PIN 17 //Serial communication receive pin (gyroscope)
 #define IMU_TX_PIN 32 //Serial communication transmit pin (gyroscope)
+#define US_TRIGGER_PIN 18 //Ultrasonic sensor trigger pin (send soundwave)
+#define US_ECHO_PIN 19 //Ultrasonic sensor echo pin (on measurement done)
 
-#define SERVO_MIN 250 //maximum safe left state servo PWM
-#define SERVO_MAX 415 //maximum safe right state servo PWM
-#define SERVO_CENT 325 //calibrated central state servo PWM
 
 #define spwm_freq 50 //servo PWM frequency
 #define spwm_res 12 //servo PWM resolution (2^12)
@@ -41,6 +40,9 @@
 #define CMD_SET_SMODE 18 //set smode (steer mode) command
 #define CMD_SET_BREAKPERCENT 19 //set breaking percentage command
 #define CMD_SET_TARGET_YAW 20 //set target yaw (heading) command
+#define CMD_SET_SERVO_MAX 21 //set the maximum servo state
+#define CMD_SET_SERVO_MIN 22 //set the minimum servo state
+#define CMD_SET_SERVO_CENT 23 //set the central servo state
 
 #define CMD_DATA_POSL 11 //retrieve left motor position command
 #define CMD_DATA_POSR 12 // retieve right motor position command
@@ -48,7 +50,9 @@
 #define CMD_DATA_VMODE 14 // retrieve vmode command
 #define CMD_DATA_SPEED 15 // retieve current speed command (real speed, not target)
 #define CMD_DATA_ABS_GYRO 16 //retieve "absolute" gyro (does not loop back after 180 degrees to -180)
+#define CMD_DATA_US 24 //retieve ultrasonic sensor measaured distance
 
+#define US_DELAY 50 //Ultrasonic sensor delay (how much delay should be between sensor readings in milliseconds)
 
 #define LED_C 15 //led PWM channel, not used
 
@@ -77,6 +81,10 @@
 #define kIY 0
 #define kDY 0
 
+int SERVO_MIN=250; //maximum safe left state servo PWM
+int SERVO_MAX=415; //maximum safe right state servo PWM
+int SERVO_CENT=325; //calibrated central state servo PWM
+
 int conn_state=STATUS_SYNC;
 int heartBeatT0=0; //last heartbeat time
 
@@ -87,6 +95,9 @@ int lastAvg=0;
 int speed=0;
 int targetSpeed=0;
 int brakePowerPercent=10;
+
+volatile int distance, duration, usStart, lastUSread; //ultrasonic sensor variables
+volatile bool usSent=false; //is expecting an ultrasonic echo
 
 //driving PID variables
 int integral=0;
@@ -113,8 +124,38 @@ int i2cResponse=-1;
 volatile int turnRatioL=1000;
 volatile int turnRatioR=1000;
 
-Adafruit_BNO08x_RVC rvc = Adafruit_BNO08x_RVC(); //gyro communication class in RVC mode
 
+
+Adafruit_BNO08x_RVC rvc = Adafruit_BNO08x_RVC(); //gyro communication class in RVC mode
+void setDrivingDirection(int dir){
+  if(dir==1){
+    digitalWrite(BACKWARD_PIN, LOW);
+    digitalWrite(FORWARD_PIN, HIGH);
+  } else{
+    digitalWrite(BACKWARD_PIN, HIGH);
+    digitalWrite(FORWARD_PIN, LOW);
+  }
+  
+}
+//Ultrasonic sensor distance calculating (on echo interrupt)
+void echo(){
+  if(usSent){
+    duration = micros()-usStart;
+    int newDistance = (duration*172);
+    distance=(distance*8+newDistance*2)/10;
+    usSent=false;
+  }
+}
+//Ultrasonic sensor start measure
+void sendUSPulse(){
+	digitalWrite(US_TRIGGER_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(US_TRIGGER_PIN, HIGH);
+	delayMicroseconds(10);
+	digitalWrite(US_TRIGGER_PIN, LOW);
+  usStart=micros();
+  usSent=true;
+}
 //timer interrupt, run exactly 100 times a second, handles real speed calulation, PID driving motor control and PID steering control
 void IRAM_ATTR onTick(){
   posAvg=(posL+posR)/2;
@@ -141,32 +182,39 @@ void IRAM_ATTR onTick(){
     }
     case V_FORWARD:
     {
-      digitalWrite(BACKWARD_PIN, LOW);
-      digitalWrite(FORWARD_PIN, HIGH);
+      
       int error=targetSpeed-speed;
       integral+=error;
       int PWM=kP*error+integral*kI+(error-lastError)*kD;
       lastError=error;
-      PWM=std::max(0,PWM);
+      PWM=std::max(-4095/10,PWM);
       PWM=std::min(4095,PWM);
-      ledcWrite(leftm_pwm_channel, PWM);
-      ledcWrite(rightm_pwm_channel, PWM);
+      if(PWM<0){
+        setDrivingDirection(-1);
+      } else{
+        setDrivingDirection(1);
+      }
+      ledcWrite(leftm_pwm_channel, abs(PWM));
+      ledcWrite(rightm_pwm_channel, abs(PWM));
       break;
     }
     case V_BACKWARD:
     {
-      digitalWrite(BACKWARD_PIN, HIGH);
-      digitalWrite(FORWARD_PIN, LOW);
       int error=targetSpeed-speed;
       integral+=error;
       int PWM=(kP*error+integral*kI+(error-lastError)*kD);
       PWM*=-1;
 
       lastError=error;
-      PWM=std::max(-4095*10/100,PWM);
+      PWM=std::max(-4095/10,PWM);
       PWM=std::min(4095,PWM);
-      ledcWrite(leftm_pwm_channel, PWM);
-      ledcWrite(rightm_pwm_channel, PWM);
+      if(PWM<0){
+        setDrivingDirection(1);
+      } else{
+        setDrivingDirection(-1);
+      }
+      ledcWrite(leftm_pwm_channel, abs(PWM));
+      ledcWrite(rightm_pwm_channel, abs(PWM));
       break;
     }
     case V_BRAKE:
@@ -228,7 +276,10 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(B_PIN_L), readEncoder<'A','L'>, RISING);
   attachInterrupt(digitalPinToInterrupt(A_PIN_R), readEncoder<'B','R'>, RISING);
   attachInterrupt(digitalPinToInterrupt(B_PIN_R), readEncoder<'A','R'>, RISING);
-
+  //Ultrasonic sensor pins setup
+  pinMode(US_TRIGGER_PIN, OUTPUT);
+  pinMode(US_ECHO_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(US_ECHO_PIN), echo, FALLING); //function 'echo' gets called when measurement is done
   //led
   pinMode(LED_PIN,OUTPUT);
   // ledcAttachPin(LED_PIN, LED_C);
@@ -279,7 +330,7 @@ void disconnect(){
   ledcWrite(rightm_pwm_channel,0);
   setLedStatus(STATUS_SYNC);
 }
-//sends an into to the raspberry pi via i2c
+//sends an int to the raspberry pi via i2c
 void sendInt(int data, int len=4){
   Wire.write(len);
   for(int i=0;i<len;i++){
@@ -308,13 +359,31 @@ int readInt(){
   }
   return num;
 }
+void steer(int percentage){
+  int duty=-1;
+  if(percentage>0){
+    duty=(SERVO_MAX-SERVO_CENT)*abs(percentage)/100+SERVO_CENT;
+  } else {
+    duty=SERVO_CENT-(SERVO_CENT-SERVO_MIN)*abs(percentage)/100;
+  }
+  if(duty>SERVO_MAX) {duty=SERVO_MAX;}
+  if(duty<SERVO_MIN) {duty=SERVO_MIN;}
+  ledcWrite(spwm_channel,duty);
+}
 //main loop
 void loop() {
+  int t=millis();
   BNO08x_RVC_Data heading;
   log_var=conn_state;
   //checks if there is new gyro data available, if yes, updates internal absyaw variable. Also prevents the gyro from looping around
   if (rvc.read(&heading)) {
     newYaw=heading.yaw*10; //data is in .1 degrees
+    if(newYaw==0){
+      newYaw=1;
+    }
+    if(newYaw==-1){
+      newYaw=-2;
+    }
     if(newYaw!=lastYaw){
       if(newYaw-lastYaw>1800) {yawOffset-=3600;}
       if(newYaw-lastYaw<-1800){yawOffset+=3600;}
@@ -322,7 +391,7 @@ void loop() {
       lastYaw=newYaw;
     }
   }
-  int t=millis();
+  
   int hb=heartBeatT0;
   //Heartbeat detetction, if the raspberry hasn't sent a hearrtbeat command in .2 seconds it assumes the program on the pi may have crashed or stopped
   if((conn_state==STATUS_CONNECTED) && (t-hb)>200) {
@@ -332,6 +401,11 @@ void loop() {
     Serial.println((t-hb));
     disconnect();
   }
+  if(t-lastUSread>US_DELAY){
+    sendUSPulse();
+    lastUSread=t;
+  }
+
 }
 //On command received from raspberry
 void onI2CReceive(int byteCount){
@@ -340,6 +414,16 @@ void onI2CReceive(int byteCount){
   // Serial.println(command);
   switch(command){
       case CMD_STEER:
+        steer(readInt());
+        break;
+      case CMD_SET_SERVO_CENT:
+        SERVO_CENT=readInt();
+        break;
+      case CMD_SET_SERVO_MAX:
+        SERVO_MAX=readInt();
+        break;
+        case CMD_SET_SERVO_MIN:
+        SERVO_MIN=readInt();
         break;
       case CMD_SYNC:
         // digitalWrite(LED_PIN,HIGH);
@@ -380,7 +464,6 @@ void onI2CReceive(int byteCount){
         break;
       case CMD_DATA_POSAVG:
         i2cResponse=posAvg;
-        // Serial.println("set rp");
         break;
       case CMD_DATA_POSL:
         i2cResponse=posL;
@@ -408,10 +491,12 @@ void onI2CReceive(int byteCount){
       case CMD_SET_TARGET_YAW:
         targetYaw=readInt();
         break;
+      case CMD_DATA_US:
+        i2cResponse=distance/100;
+        break;
   }
 }
-//if the raspberry pi also expects a response via i2c it sends the previously set i2cResponse variable
+//if the raspberry pi also expects a response via i2c it sends the previously stored i2cResponse variable
 void onI2CRequest(){
   sendInt(i2cResponse);
-  // i2cResponse=-1;
 }
