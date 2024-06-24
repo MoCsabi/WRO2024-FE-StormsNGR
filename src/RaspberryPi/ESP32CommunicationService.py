@@ -96,5 +96,3 @@ def setServoCent(sCent):
     sendCommand(CMD_SET_SERVO_CENT,sCent)
 def steer(percentage):
     sendCommand(CMD_STEER,int(percentage))
-def getRawUS()->float:
-    return requestData(CMD_DATA_US)/100

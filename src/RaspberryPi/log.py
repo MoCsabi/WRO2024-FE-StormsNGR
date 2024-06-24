@@ -1,135 +1,103 @@
-'''Custom logging library'''
-import logging
-import sys
 import os
-from pathlib import Path
+import sys
 import threading
+import datetime
+from pathlib import Path
 import atexit
+import traceback
 
-
-logging.LIDAR = logging.DEBUG + 5
-
-
-logging.addLevelName(logging.LIDAR,"LIDAR")
-
-def rename_lidar(self, message, *args, **kws):
-    if self.isEnabledFor(logging.LIDAR):
-        self._log(logging.LIDAR , message, args, **kws)
-
-
-logging.Logger.lidar = rename_lidar
-
-
-
-
-
-class ContextFilter(logging.Filter):
-    def filter(self, record):
-        record.section = log.section
-        return True
-
-class specific_level_filter(logging.Filter):
-    def __init__(self,level):
-        super().__init__()
-        self.level = level
-    
-    def filter(self, record):
-        return record.levelno == self.level
-
+directory = Path(__file__).parent.absolute()
 
 
 class main_log():
     
-    directory = Path(__file__).parent.absolute()
-    logged = logging.getLogger("MainLog")
-    logged.propagate = False
-    logged.setLevel(logging.DEBUG)
-
-    section = 0
-    date = "%H:%M:%S.%03d"
-    
-    cur_data = []
-    lidar_data = []
-    
-    def trace_error(a,b,c):
-        main_log.logged.critical("",exc_info=b)
-    
-    def thread_error(err):
-        main_log.logged.critical("",exc_info=err)
-    
-    threading.excepthook = thread_error
-    sys.excepthook = trace_error
-
-    def make_handler(self,level,file="log",format='\n<%(levelname)s - section %(section)s - %(asctime)s>\n%(message)s\n'):
-        self.handler = logging.FileHandler(Path.joinpath(self.directory,"logs",f"{file}.stormslog"),mode="w")
-        self.handler.setLevel(level)
-        self.handler_format = logging.Formatter(format,self.date)
-        self.handler.setFormatter(self.handler_format)
-        self.handler.addFilter(specific_level_filter(level))
-        self.handler.addFilter(ContextFilter())
-        self.logged.addHandler(self.handler)
-    
-        
-    def log_message(self,message, level = ""):
+    def log_save(self,message,level=""):
+        with open(Path.joinpath(directory,"logs","log.stormslog"),"a") as file:
+            file.write(f"\n<{level} - section {self.section} - {datetime.datetime.now().strftime('%H:%M:%S.%f')}>\n\n{str(message)}\n")
+            file.flush()
+            
+    def temp_save(self,message,level=""):
+        """Logs the last 150 lines to a seperate temporary file for a custom vscode extension to use.
+        It saves the raw text inputed line by line without extra info only saving the logging level at the end of every line."""
         self.cur_data.extend([i+level for i in str(message).split("\n")])
         if len(self.cur_data) > 150:
             for i in range(len(self.cur_data)-150):
                 self.cur_data.pop(i)
-        with open(Path.joinpath(self.directory,"logs",f"log.stormslogtemp"),"w") as temp_log:
+        with open(Path.joinpath(directory,"logs",f"log.stormslogtemp"),"w") as temp_log:
             temp_log.writelines([str(i)+"\n" for i in self.cur_data])
-
+            temp_log.flush()
+    
+    
+    def critical(self,message):
+        with open(Path.joinpath(directory,"logs","critcal.stormslog"),"a") as file:
+            file.write(f"\n<CRITICAL - {self.section} - {datetime.datetime.now().strftime('%H:%M:%S.%f')}>\n\n{message}\n")
+            file.flush()
+    
+    def thread_error(self,err):
+        self.critical(''.join(traceback.format_exception(err.exc_type, err.exc_value, err.exc_traceback)))
+    
+    def main_error(self,a,b,c):
+        self.critical(''.join(traceback.format_exception(a,b,c)))
+    
     def debug(self,message):
-        self.logged.debug(message)
-        self.log_message(message,"__d__")
+        self.log_save(message,"DEBUG")
+        self.temp_save(message,"__d__")
     
     def info(self,message):
-        self.logged.info(message)
-        self.log_message(message,"__i__")
+        self.log_save(message,"INFO")
+        self.temp_save(message,"__i__")
     
     def warning(self,message):
-        self.logged.warning(message)
-        self.log_message(message,"__w__")
+        self.log_save(message,"WARNING")
+        self.temp_save(message,"__w__")
     
     def error(self,message):
-        self.logged.error(message)
-        self.log_message(message,"__e__")
+        self.log_save(message,"ERROR")
+        self.temp_save(message,"__e__")
     
     def lidar(self,message):
-        self.logged.lidar(message)
+        """Logs the data of the lidar, degrees of interest, rectangles of interest, gyro position and time.
+        Saves to a seperate file from the rest. Also saves to a temporary file where only the last 2 data are saved."""
+        
+        with open(Path.joinpath(directory,"logs","lidar.stormslog"),"a") as file:
+            file.write(message + "\n")
+            file.flush()
         
         self.lidar_data.extend(message.split("\n"))
         if len(self.lidar_data) > 2:
             for i in range(len(self.lidar_data)-2):
                 self.lidar_data.pop(i)
-        with open(Path.joinpath(self.directory,"logs",f"lidar.stormslogtemp"),"w") as temp_log:
+        with open(Path.joinpath(directory,"logs",f"lidar.stormslogtemp"),"w") as temp_log:
             temp_log.writelines([str(i)+"\n" for i in self.lidar_data])
+            temp_log.flush()
+    
+    warn = warning
+    fatal = critical
+    
+    sys.excepthook = main_error
+    threading.excepthook = thread_error
+    
+    def close(self,func,register = True):
+        if register:
+            atexit.register(func)
+        elif not register:
+            atexit.unregister(func)
+    
         
     
-
-    def __init__(self):
-        os.makedirs(self.directory / "logs", exist_ok=True)
-        self.critical_handler = logging.FileHandler(Path.joinpath(self.directory,"logs","critical.stormslog"),mode="w")
-        self.critical_handler.setLevel(logging.CRITICAL)
-        self.critical_format = logging.Formatter('\n<%(levelname)s - %(asctime)s>\n%(message)s\n',self.date)
-        self.critical_handler.setFormatter(self.critical_format)
-        self.logged.addHandler(self.critical_handler)
+    def __init__(self) -> None:
         
+        self.section = 0
+        self.cur_data = []
+        self.lidar_data = []
         
-        self.make_handler(logging.DEBUG)
-        self.make_handler(logging.INFO)
-        self.make_handler(logging.WARNING)
-        self.make_handler(logging.ERROR)
+        open(Path.joinpath(directory,"logs","critical.stormslog"),"w").close()
+        open(Path.joinpath(directory,"logs","log.stormslog"),"w").close()
+        open(Path.joinpath(directory,"logs","lidar.stormslog"),"w").close()
         
-        '''Custom lidar logging level it's level is logging.DEBUG + 5'''
-        
-        self.make_handler(logging.LIDAR,"lidar","%(message)s")
-        
-        def close_handlers():
-            for handler in self.logged.handlers:
-                handler.flush()
-                handler.close()
-        
-        atexit.register(close_handlers)
         
 log = main_log()
-'''Already created instance of main_log'''
+
+
+
+

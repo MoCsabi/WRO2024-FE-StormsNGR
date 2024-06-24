@@ -1,7 +1,7 @@
 #! /usr/bin/python
 '''The main python file, it contains the code for both robot runs and helper functions'''
 import json
-from math import cos, pi, atan, ceil, copysign, floor, sin
+from math import asin, cos, pi, atan, ceil, copysign, floor, sin, sqrt
 import threading
 from time import sleep, time
 from log import *
@@ -12,8 +12,10 @@ import LidarService
 from LidarService import *
 from Buzzer import *
 from decorators import func_thread
+from VL53L0X import *
 
-
+distSensor=VL53L0X()
+'''Laser distance sensor behind the robot'''
 
 TICKS_PER_CM=31.43
 '''Convert internal ticks to CM. (Motor rotation is measured in ticks by the ESP)'''
@@ -27,76 +29,66 @@ GREEN=1
 '''Constant for the color Green. Used for obstacle color detection and storing.'''
 RED=2
 '''Constant for the color Red. Used for obstacle color detection and storing.'''
-# import pixy
-#TODO: Pixy camera currently not in use
-# pixy.init()
+import pixy
+# TODO: Pixy camera currently not in use
+pixy.init()
 colorMatrixPrequel = [GREEN,RED]
 getColorCounter = 1
-#currently camera is not in use
+
 CAM_WIDTH=315
 CAM_HEIGHT=207
 CAM_RIGHT_CUTOFF=CAM_WIDTH-0 #200
 CAM_LEFT_CUTOFF=50
 CAM_BOT_CUTOFF=CAM_HEIGHT-10
-CAM_TOP_CUTOFF=20
-def isCutoff(x,y):
-    return x>=CAM_RIGHT_CUTOFF or x<=CAM_LEFT_CUTOFF or y>=CAM_TOP_CUTOFF or y<=CAM_BOT_CUTOFF
-def checkColor(attempts:int=5)->int:
-    '''Checks the color of the closest obstacle using the Pixy camera. 
-    attempts: Not recommended to have over 1. Number of attempts with a delay of 0.1 seconds between if first attempt is not succesfull.'''
-    global getColorCounter
-    # global CAM_TOP_CUTOFF
-    # global CAM_RIGHT_CUTOFF
-    # global CAM_LEFT_CUTOFF
-    # i=0
-    # rt=-1
-    # if getUS()>70:
-    #     CAM_TOP_CUTOFF=20
-    # else:
-    #     CAM_TOP_CUTOFF=10
-    # if lane==0:
-    #     CAM_LEFT_CUTOFF=90
-    #     CAM_RIGHT_CUTOFF=240
-    # elif lane>0:
-    #     CAM_LEFT_CUTOFF=0
-    #     CAM_RIGHT_CUTOFF=CAM_WIDTH-150
-    # elif lane<0:
-    #     CAM_LEFT_CUTOFF=150
-    #     CAM_RIGHT_CUTOFF=CAM_WIDTH
-    getColorCounter += 1
-    log.info("color: %s"%colorMatrixPrequel[(getColorCounter-1)%len(colorMatrixPrequel)])
-    return colorMatrixPrequel[(getColorCounter-1)%len(colorMatrixPrequel)]
-    while rt==-1 and i<attempts:
-        blocks=pixy.BlockArray(4)
-        n=pixy.ccc_get_blocks(4,blocks)
-        log.info("detected %s blocks"%n)
-        for i in range(n):
-            b:pixy.Block=blocks[i]
-            log.debug("detected at %s %s, size %s %s with signature: %s"%(b.m_x,b.m_y,b.m_width,b.m_height,b.m_signature))
-        if n>1:
-            log.warning("multiple blocks detected!")
-        if n==0:
-            beep_parallel()
-            log.warning("no blocks detected!")
-            rt=-1
-        else:
-            # rt= GREEN if b1.m_signature==1 else RED
-            j=0
-            while not isCutoff(blocks[j].m_x,blocks[j].m_y) and j<n: j+=1
-            log.info("found block num %s"%j)
-            if not isCutoff(blocks[j].m_x,blocks[j].m_y):
-                rt= GREEN if blocks[j].m_signature==1 else RED
-            else:
-                rt=-1
-                log.error("All blocks outside signature range!!")
+CAM_TOP_CUTOFF=0
+def isInsideCamArea(x,y):
+    return x<CAM_RIGHT_CUTOFF and x>CAM_LEFT_CUTOFF and y>CAM_TOP_CUTOFF and y<CAM_BOT_CUTOFF
 
-        i+=1
-        sleep(0.1)
-    if rt==-1:
-        log.error("did not find object!")
-        rt=GREEN
-    log.info("Detected final color %s"%("GREEN" if rt==GREEN else "RED"))
-    return rt
+defaultColor=RED
+''''''
+def checkColor()->int:
+    '''Checks the color of the closest obstacle outside the cutoff area using the Pixy camera.'''
+    global getColorCounter
+    global CAM_RIGHT_CUTOFF
+    global CAM_LEFT_CUTOFF
+    global pixyObjects
+    if lane==0:
+        CAM_LEFT_CUTOFF=90
+        CAM_RIGHT_CUTOFF=240
+    elif lane>0:
+        CAM_LEFT_CUTOFF=0
+        CAM_RIGHT_CUTOFF=CAM_WIDTH-150
+    elif lane<0:
+        CAM_LEFT_CUTOFF=150
+        CAM_RIGHT_CUTOFF=CAM_WIDTH
+    # getColorCounter += 1
+    # log.info("color: %s"%colorMatrixPrequel[(getColorCounter-1)%len(colorMatrixPrequel)])
+    # return colorMatrixPrequel[(getColorCounter-1)%len(colorMatrixPrequel)]
+    temp_pixyObjects=[]
+    blocks=pixy.BlockArray(4)
+    n=pixy.ccc_get_blocks(4,blocks)
+    log.info("detected %s blocks"%n)
+    if n==0:
+        log.error("No blocks detected!")
+        pixyObjects=temp_pixyObjects
+        return defaultColor
+    for b in range(n): temp_pixyObjects.append((blocks[b].m_x,blocks[b].m_y,blocks[b].m_width,blocks[b].m_height,blocks[b].m_signature,False))
+    for i in range(n):
+        b:pixy.Block=blocks[i]
+        log.debug("detected at %s %s, size %s %s with signature: %s"%(b.m_x,b.m_y,b.m_width,b.m_height,b.m_signature))
+        if isInsideCamArea(b.m_x,b.m_y):
+            log.info("i %s"%i)
+            detected=list(temp_pixyObjects[i])
+            detected[5]=True
+            temp_pixyObjects[i]=tuple(detected)
+            log.info("Final color %s"% "GREEN" if b.m_signature==GREEN else "RED")
+            pixyObjects=temp_pixyObjects
+            return b.m_signature
+    else:
+        log.error("All blocks outside cutoff range!! cutoffs: left %s right %s top %s bot %s"%(CAM_LEFT_CUTOFF,CAM_RIGHT_CUTOFF,CAM_TOP_CUTOFF,CAM_BOT_CUTOFF))
+        pixyObjects=temp_pixyObjects
+        return defaultColor
+
 
 wIntergral=0
 '''Wall distance following integral variable'''
@@ -117,7 +109,7 @@ lastHeading=0
 heading0=0
 '''Robot starting direction'''
 
-lastUSDist=0
+lastTOFDist=0
 
 PILOT_NONE=0
 '''Robot piloting mode, no piloting'''
@@ -170,11 +162,13 @@ def go(speed:int,headingTarget:int, pilotModeIn:int=PILOT_NONE, wallDistance:int
     setVMode(int(copysign(1,speed)))
 
 def angularToXy(angle:int, distance:int):
+    '''Helper method to convert angular (angle distance) coordinates into x and y coordinates'''
     x=distance*sin(angle/180*pi)
     y=distance*cos(angle/180*pi)
     return x,y
 
 def XyToAngular(x:int,y:int):
+    '''Helper method to convert x and y coordinates into angle and distance'''
     if x==0 or y==0: return 0, y
     angle=atan(x/y)
     distance=x/sin(angle)
@@ -182,10 +176,13 @@ def XyToAngular(x:int,y:int):
     return angle,distance
 
 def isInsideRect(botLeft,topRight,point):
+    '''Checks whether given point (x,y) is inside rectangle defined by point bottom left (x,y) and top right (x,y)'''
     return point[0]>=botLeft[0] and point[0]<=topRight[0] and point[1]>=botLeft[1] and point[1]<=topRight[1]
 
 WARNING_DZ_TOLERANCE=3
-def  readLidar(degree)->int:
+'''Lidar deadzone tolerance, robot won't signal an error message if angle is within tolerance of deadzone'''
+def readLidar(degree)->int:
+    '''Returns the lidar distance at the given angle from the stored array of angles. Also avoids the lidar deadzone'''
     global lidarDOI
     degree=(degree+3600)%360
     if degree>180:
@@ -193,7 +190,7 @@ def  readLidar(degree)->int:
     if degree<LIDAR_DANGERZONE_START-WARNING_DZ_TOLERANCE or degree>LIDAR_DANGERZONE_END+WARNING_DZ_TOLERANCE:
         log.warning("lidar danger zone! req. degree: %s, heading: %s" % (degree,getHeading()))
     if degree<LIDAR_DANGERZONE_START:
-        degree=-LIDAR_DANGERZONE_START
+        degree=LIDAR_DANGERZONE_START
     if degree>LIDAR_DANGERZONE_END:
         degree=LIDAR_DANGERZONE_END
 
@@ -201,26 +198,32 @@ def  readLidar(degree)->int:
     return DISTANCE_MAP[(int(degree-90)+360*100)%360]
 
 def readAbsLidar(degree)->int:
+    '''Returns the lidar distance at the given absolute angle (not relative to the robot)'''
     return readLidar((degree-getHeading())*-1)
 
 def getAbsX()->int:
+    '''Returns the robot distance from the outer wall'''
     if direction==1:
         return readAbsLidar(-90)
     else:
         return 100-readAbsLidar(90)
 
-def getAbsY()->int:
+def getAbsY(back=True)->int:
+    '''Returns the robot distance from the back (behind the robot) wall'''
     # return 300-readAbsLidar(0)
-    return getUS()
+    if back: return getTOF()
+    else: return 300-readAbsLidar(0)
 
-def findNearestPointAbs(botLeft:tuple,topRight:tuple):
-    point= findNearestPoint( (botLeft[0]-getAbsX(), botLeft[1]-getAbsY()), (topRight[0]-getAbsX(), topRight[1]-getAbsY()))
+def findNearestPointAbs(botLeft:tuple,topRight:tuple,back=True):
+    '''Finds the nearest point inside defined rectangle (bottom left and top right) relative to the bottom left corner of the section'''
+    point= findNearestPoint( (botLeft[0]-getAbsX(), botLeft[1]-getAbsY(back)), (topRight[0]-getAbsX(), topRight[1]-getAbsY(back)))
     if point[1]!=-1:
-        return (point[0]+getAbsX() , point[1]+getAbsY())
+        return (point[0]+getAbsX() , point[1]+getAbsY(back))
     else:
         return (-1,-1)
     
 def findNearestPoint(botLeft:tuple,topRight:tuple):
+    '''Returns the nearest point inside defined rectangle (bottom left and top right) relative to the lidar'''
     global lidarRects
     lidarRects.append((botLeft,topRight))
     topLeftAngular=XyToAngular(botLeft[0],topRight[1])
@@ -236,37 +239,35 @@ def findNearestPoint(botLeft:tuple,topRight:tuple):
         if isInsideRect(botLeft,topRight,(x,y)) and y<nearestPoint[1]: nearestPoint=(x,y)
     if nearestPoint[1]==10000000: nearestPoint=(-1,-1)
     return nearestPoint
-LIDAR_US_DIST=24.5
+LIDAR_TOF_DIST=21
 '''Distance between ultrasnoic sensor and lidar'''
-US_OFFSET=11
-'''Ultrasonic sensor correction offset'''
 
-def updUS():
-    '''Update stored ultrasonic sensor reading'''
-    global lastUSDist
-    # pass
-    lastUSDist=getRawUS()+LIDAR_US_DIST-US_OFFSET
-    # lastUSDist=300-readAbsLidar(0)
+def updTOF():
+    '''Update stored laser time-of-flight sensor reading'''
+    global lastTOFDist
+    dist=distSensor.get_distance()/10+LIDAR_TOF_DIST
+    if dist<200: lastTOFDist=dist
 
-def getUS()->float:
-    '''Returns last stored ultrasonic sensor reading'''
+def getTOF()->float:
+    '''Returns last stored laser time-of-flight sensor reading'''
     global lidarDOI
     lidarDOI.append(180)
-    return lastUSDist
+    return lastTOFDist
     # return 300-readAbsLidar(0)
 
-def waitUS(cm,decreasing=True):
-    '''Wait until ultrasinic sensor detects distance smaller (or larger) than cm'''
-    log.info("waitUS cm %s decresing? %s"%(cm,decreasing))
+def waitTOF(cm,decreasing=True):
+    '''Wait until laser time-of-flight sensor detects distance smaller (or larger) than cm'''
+    log.info("waitTOF cm %s decresing? %s"%(cm,decreasing))
     condition=True
     while condition:
-        dist=getUS()
+        dist=getTOF()
         log.debug(dist)
         if decreasing: condition=(cm<dist)
         else: condition=(cm>dist)
         sleep(0.05)
 
 def waitAbsLidar(angle:int, cm:int, precision=None, decreasing=True):
+    '''Waits until lidar at given angle measures smaller (or larger, based on *decreasing*) distance'''
     condition=True
     precision=None #precision mode is currently disabled
     lastDist=readAbsLidar(angle)
@@ -294,6 +295,8 @@ def waitAbsLidar(angle:int, cm:int, precision=None, decreasing=True):
     return lastDist
 
 def waitCM(cm:int):
+    '''Waits until robot has traveled given centimeters.
+    Not in use.'''
     sleep(0.01)
     p0=getAvgPos()
     log.debug("waitcm p0: %s"%p0)
@@ -304,18 +307,24 @@ def waitCM(cm:int):
     log.debug("waitcm finished, pos: %s"%getAvgPos())
 
 def angleDiff(angle1,angle2)->int:
+    '''Returns the shortest distance between two angles'''
     diff=((angle1-angle2)+3600)%360
     if diff>180:
         diff=diff-360
     return diff
 WAIT_FOR_HEADING_TOLERANCE:int=2
-
+'''The robot will consider itself at the corract angle if actual angle is only off by this much'''
 def waitForHeading(tolerance=None):
+    '''Waits until robot faces pilotHeadingTarget (variable) angle
+    tolerance: Customizable tolerance, default is the constant WAIT_FOR_HEADING_TOLERANCE'''
     if tolerance==None: tolerance=WAIT_FOR_HEADING_TOLERANCE
     while abs(angleDiff(getHeading(),pilotHeadingTarget))>tolerance:
         sleep(0.01)
 
 def stop(breakForce:int=None, wait:bool=True):
+    '''Stops the robot
+    breakForce: If given, default breking (counter-driving) force is overridden
+    wait: Wether the program should wait until the robot has stopped before resuming'''
     global actSpeed
     global targetSpeed
     targetSpeed=0
@@ -333,22 +342,28 @@ def stop(breakForce:int=None, wait:bool=True):
     actSpeed=0
 
 def setHeadingTarget(target:int):
+    '''Communicates with the ESP what the target angle is'''
     sendCommand(CMD_SET_TARGET_YAW,int((target+heading0)*10))
 targetSpeed:int=0
+'''Target speed used for raspberry pi side acceleration and decceleration'''
 acceleration=5000
+'''Acceleration constant, in tick/second^2'''
 actSpeed:int=0
+'''Actual speed in tick/second, used for raspberry pi side acceleration and decceleration'''
 
 def setTargetSpeed(tSpeed:int):
+    '''Sets the raspberry pi side target speed'''
     global targetSpeed
     targetSpeed=tSpeed
 
-
+#This method gets called about 10 times a second, when the lidar finishes a revolution
 def pilotRobot():
+    '''Function responsible for accelerating, logging information, updating the laser time of flight sitance sensor and wall following'''
     global wIntergral
     global wLastError
     global actSpeed
     logLidar()
-    updUS() #update stored us reading 10 times a second
+    updTOF() #update stored us reading 10 times a second
     
     # print(getHeading())
     # print("d: "+str(readAbsLidar(getHeading())))
@@ -369,25 +384,39 @@ def pilotRobot():
         # sendCommand(CMD_SET_TARGET_YAW,int((pilotDir-correction+yaw0)*10))
         wLastError=error
 lidarLogJSON={"Data":[],"T":-1,"DOI":[],"Rect":[]}
+'''Dictionary storing logging data'''
 lidarDOI=[]
+'''Lidar Degrees Of Interest, degrees that were inspected by readLidar, waitAbsLidar or in any other way'''
 lidarRects=[]
-
+'''Rectangles that were checked for the nearest point by findNearestPoint'''
+pixyObjects=[]
+'''Objects detected by the pixy camera'''
 def logLidar():
+    '''Logging function, logs in a file the lidar distance map, gyro, degrees of interest, checked rectangles, pixy camera objects, camera cutoff lines'''
     global lidarDOI
     global lidarRects
+    global pixyObjects
     global DISTANCE_MAP
-    DISTANCE_MAP[90]=getUS()
+    if pixyObjects==[]: pixyObjects="Null"
+    DISTANCE_MAP[90]=getTOF()
     lidarLogJSON["h0"]=heading0
     lidarLogJSON["heading"]=getHeading()
     lidarLogJSON["Data"]=DISTANCE_MAP
-    lidarLogJSON["T"]=time()
+    lidarLogJSON["T"]=time.time()
     lidarLogJSON["DOI"]=lidarDOI
     lidarLogJSON["Rect"]=lidarRects
+    lidarLogJSON["cutoffLeft"]=CAM_LEFT_CUTOFF
+    lidarLogJSON["cutoffRight"]=CAM_RIGHT_CUTOFF
+    lidarLogJSON["cutoffTop"]=CAM_TOP_CUTOFF
+    lidarLogJSON["cutoffBot"]=CAM_BOT_CUTOFF
+    lidarLogJSON["pixyObjects"]=pixyObjects
     lidarRects=[]
     lidarDOI=[]
+    pixyObjects=[]
     log.lidar(json.dumps(lidarLogJSON))
 
 def checkAngle(angle:int)->bool:
+    '''Old function used to determine wether there is a wall at given angle'''
     dir=1
     if angle>180: dir=-1
     x=readLidar(90*dir)
@@ -402,6 +431,7 @@ def checkAngle(angle:int)->bool:
     return actualC>correctC+10
 
 def checkSide(side)->int:
+    '''Old function used to determine wether there is a wall on a side'''
     corrects=0
     dir=copysign(1,side)
     for i in range(0,80):
@@ -416,25 +446,19 @@ def checkSide(side)->int:
     return corrects
 
 def openChallangeRun():
+    '''The open challange robot run code'''
     global heading0
     global pilotHeadingTarget
-    initLoop()
-    dir = 0
+    global direction
+    initLoop(open=True)
     middle = True
-    go(3000,0)
-    waitAbsLidar(0,100)
-    stop()
-    go(-3000,0)
-    waitCM(-100)
-    stop()
-    sleep(20000)
     if readAbsLidar(90) < 15:
         log.info("wall from right")
-        dir = 1
+        direction = 1
         middle = False
     elif readAbsLidar(270) < 15:
         log.info("wall from left")
-        dir = -1
+        direction = -1
         middle = False
 
     if not middle:
@@ -443,69 +467,83 @@ def openChallangeRun():
         waitAbsLidar(-90*dir,30)
         go(2000,0)
     else:
-        if checkSide(0) > 2: dir = -1
-        else: dir = 1
         go(2000,0)
-    log.info("setting dir to %s"%dir)
+    log.info("setting dir to %s"%direction)
     for i in range(12):
-
-
-        waitAbsLidar(0,70)
-        displayData(readAbsLidar(0))
-        setPilotMode(PILOT_NONE)
-        setSpeed(2000)
-        setHeadingTarget(90*dir)
-
-        pilotHeadingTarget=90*dir
-        waitForHeading()
-        heading0+=90*dir
+        waitAbsLidar(0,50)
+        arc(90*direction, 1000)
+        heading0+=90*direction
         updHeading()
-        go(3000,0)
-        waitAbsLidar(0,150)
-        wD=readAbsLidar(-90*dir)
-        go(3000,0,PILOT_FOLLOW_LEFT if dir == 1 else PILOT_FOLLOW_RIGHT,wD)
-
+        go(2000,0)
+    waitAbsLidar(0,150)
     stop()
     exit()
 lane:float=0
+'''Current lane variable'''
 LANE_MIDDLE=0
+'''Middle lane'''
 LANE_LEFT=-1
+'''Left lane'''
 LANE_RIGHT=1
+'''Right lane'''
 
 DIRECTION_RIGHT=1
+'''Right direction, the robot turns right at the corners'''
 DIRECTION_LEFT=-1
+'''Left direction, the robot turns left at the corners'''
 
-ARC_TO_STRAIGHT_CM=3
+ARC_OFFSET_CM_LONG=1
+ARC_OFFSET_CM_SHORT=-3
+SETLANE_SHORT_LIMIT=20
+SETLANE_MINIMUM=3
+'''How many centimeters the robot gets closer to the wall while turning its steering wheel. Approximation.'''
 def setLane(wallDirection, targetDistance):
+    '''Internal function, moves the robot to targetDistance from the wall
+    wallDirection: -1/1 Which wall to move relative to (inner or outer)
+    targetDistance: How close to the wall the robot should go'''
     log.info("setlane dir %s tdist %s"%(wallDirection,targetDistance))
     d0=readAbsLidar(90*wallDirection)
-    arcOffset=ARC_TO_STRAIGHT_CM
-    if d0<=ARC_TO_STRAIGHT_CM: arcOffset=d0/2
+    if d0-targetDistance<SETLANE_MINIMUM: return
+    arcOffset=ARC_OFFSET_CM_LONG
+    goAngle=43
+    if d0-targetDistance<=SETLANE_SHORT_LIMIT: 
+        arcOffset=ARC_OFFSET_CM_SHORT
+        goAngle=20
     if d0<targetDistance:
-        go(defaultSpeed,-42*wallDirection)
+        go(defaultSpeed,-goAngle*wallDirection)
         waitAbsLidar(90*wallDirection,targetDistance-arcOffset,decreasing=False)
     else:
-        go(defaultSpeed,42*wallDirection)
+        go(defaultSpeed,goAngle*wallDirection)
         waitAbsLidar(90*wallDirection,targetDistance+arcOffset,decreasing=True)
     arc(0,defaultSpeed)
 
 def switchLane(newLane:int, steep:bool=False):
+    '''Switches the lane to the given new lane
+    newLane: One of the constants (LANE_LEFT, LANE_RIGHT, LANE_MIDDLE)
+    steep: True if the robot is moving between two obstacles'''
     global lane
-    log.info("switching lane to %s from %s ,-steep-? %s"%(newLane,lane,steep))
+    if section%4==parkPos%4 and parkPos!=-1 and steep: steep=True
+    else: steep=False
+    log.info("switching lane to %s from %s ,steep? %s"%(newLane,lane,steep))
     if newLane==lane:
         pass
     else:
-        targetDist=17+leftLaneOffset if newLane==LANE_LEFT else 83-rightLaneOffset
+        targetDist=20+leftLaneOffset if newLane==LANE_LEFT else 80-rightLaneOffset
+        if steep:targetDist=100-targetDist
         if direction==DIRECTION_RIGHT:
-            setLane(-1,targetDist)
+            setLane(-1 if not steep else 1,targetDist)
         else:
-            setLane(1,100-targetDist)
+            setLane(1 if not steep else -1,100-targetDist)
 
         lane=newLane
         
         log.info("switchlane done (at: %s from opposite wall)"%(readAbsLidar(0)))
 
 def arc(toDegree, speed=None, percent=100):
+    '''Turns the steering wheel to a percentage then goes until target degree is reached
+    toDegree: Target degree
+    speed: Speed of the robot, default is the variable defaultSpeed
+    percent: How much should the steering wheel turn in percentage. Default is 100'''
     global pilotHeadingTarget
     log.debug("arc toDegree %s w speed %s turning percent %s"%(toDegree,speed,percent))
     if speed==None: speed=defaultSpeed
@@ -527,30 +565,34 @@ def arc(toDegree, speed=None, percent=100):
     log.info("arc over at %s"%getHeading())
 
 def turnCorner():
+    '''Turns the robot in the corner'''
     global dontReverse
     global heading0
     global lane
     side=lane*direction
     if side==LANE_LEFT: # outer
-        waitAbsLidar(0,40)
-        arc(60,defaultSpeed)
-        stop()
-        arc(90,-defaultSpeed)
+        waitAbsLidar(0,55)
+        if section%4==parkPos%4 and parkPos!=-1:
+            arc(60*direction,defaultSpeed)
+            stop()
+            arc(90*direction,-defaultSpeed)
+        else:
+            arc(90*direction)
         
-        lane=-0.5
+        lane=-0.5*direction
     else: #inner
-        waitAbsLidar(0,29)
+        waitAbsLidar(0,20)
         stop()
-        arc(90,-defaultSpeed)
-        lane=0.5
+        arc(90*direction,-defaultSpeed)
+        lane=0.5*direction
     heading0+=90*direction
     updHeading()
     log.info("turncorner over")
     dontReverse = False
-    return
 
 lastHeadingLock=threading.Lock()
 def updHeading():
+    '''Updates the heading variable. Also catches anomalies'''
     global heading0
     global lastHeading
     lastHeadingLock.acquire()
@@ -569,11 +611,15 @@ def updHeading():
     lastHeadingLock.release()
 
 def getHeading()->int:
+    '''Returns the stored heading variable'''
     lastHeadingLock.acquire()
     rt=lastHeading
     lastHeadingLock.release()
     return rt
+
+#This function gets called 100 times a second
 def accelerate():
+    '''Updates the gyro and accelerates'''
     global actSpeed
     updHeading()
     
@@ -585,9 +631,11 @@ def accelerate():
     pass
 
 RUN: bool = False
+'''Used for starting the robot run'''
 
 @func_thread
 def checkForInput():
+    '''Function to detect input and act accordingly'''
     global RUN
     while True:
         inputted = input()
@@ -597,14 +645,23 @@ def checkForInput():
             case "exit":
                 displayString("EXIT")
                 GPIO.cleanup()
-                # log.logged.critical("__EXIT__")
-                # os._exit(1)
+                log.critical("__EXIT__")
+                os._exit(1)
 
 def checkAngleFromWall()->int:
-    leftLen=readLidar(-125)
-    rightLen=readLidar(145)
+    '''Calculates the robots angle relative to the wall'''
+    a=readLidar(90)
+    c=readLidar(60)
+    beta=30/180*pi
+    #cosine theorem: a^2=b^2+c^2-2*b*c*cos(alpha)
+    b=sqrt(a**2+c**2-2*a*c*cos(beta))
+    #law of sines: a/sin(alpha)=b/sin(beta)
+    alpha=asin(sin(beta)*a/b)
+    gamma=pi-alpha-beta
+    return gamma*180/pi
 
-def checkLidarDeadspace()->tuple[int,int]:
+def checkLidarDeadzone()->tuple[int,int]:
+    '''Checks the lidar deadzone's limits'''
     leftLimit=0
     rightLimit=0
     for i in range(180):
@@ -622,8 +679,9 @@ DISPLAY_LK=1
 DISPLAY_ENC0=2
 DISPLAY_ENC1=3
 DISPLAY_IMU=4
-DISPLAY_US=5
+DISPLAY_BH=5
 DISPLAY_LIDAR_DZ=6
+DISPLAY_ANGLE_FROM_WALL=7
 
 #Diameter of 70
 SERVO_MAX=435
@@ -631,7 +689,9 @@ SERVO_MIN=228
 SERVO_SAFE_MAX=SERVO_MAX
 SERVO_SAFE_MIN=228
 
-def initLoop():
+def initLoop(open=False):
+    '''Displays debug information and waits until a button is pressed
+    open: Set to true to display open challange relevant information'''
     global heading0
     global direction
     beep()
@@ -639,6 +699,7 @@ def initLoop():
     displayData(10101010)
     sync()
     checkForInput()
+    distSensor.start_ranging(VL53L0X_BETTER_ACCURACY_MODE)
     setServoMin(SERVO_SAFE_MIN) #SERVO SAFE LIMIT
     setServoMax(SERVO_SAFE_MAX) #SERVO SAFE LIMIT
     # sleep(5)
@@ -668,11 +729,10 @@ def initLoop():
             setLed(5,True)
             object=(-1,-1)
         else:
-            object=findNearestPointAbs((30,175),(70,225))
+            object=findNearestPointAbs((30,175),(70,225),back=False)
             if object[1] > -1:
                 setLed(5, False)
-                color=colorMatrixPrequel[0]
-                # color = checkColor()
+                color=checkColor()
                 if color == GREEN:
                     setLed(3,True)
                 else:
@@ -685,45 +745,51 @@ def initLoop():
                 setLed(3,False)
                 setLed(2,False)
                 setLed(5, True)
-        if dispMode==DISPLAY_LIDAR:
+        if dispMode==DISPLAY_LIDAR: #display lidar distance at angle 0
             displayData("L.",readLidar(0))
-        elif dispMode==DISPLAY_ENC0:
+        elif dispMode==DISPLAY_ENC0: #display left motor encoder
             displayData("E0.",getLPos())
-        elif dispMode==DISPLAY_ENC1:
+        elif dispMode==DISPLAY_ENC1: #display right motor encoder
             displayData("E1.",getRPos())
-        elif dispMode==DISPLAY_IMU:
+        elif dispMode==DISPLAY_IMU: #display gyroscope
             displayData("I.",requestData(CMD_DATA_GYRO))
-        elif dispMode==DISPLAY_LK:
+        elif dispMode==DISPLAY_LK: #turns on every led to check led&key
             displayString("88888888")
             setLeds("11111111")
-        elif dispMode==DISPLAY_US:
-            displayData("U.",getUS())
-        elif dispMode==DISPLAY_LIDAR_DZ:
-            limits=checkLidarDeadspace()
+        elif dispMode==DISPLAY_BH: #displays laser distance sensor
+            displayData("B.",getTOF())
+        elif dispMode==DISPLAY_LIDAR_DZ: #displays lidar deadzone limits
+            limits=checkLidarDeadzone()
             displayString("D.%s  %s"%(limits[0],limits[1]))
-        if TM.switches[1]:
+        elif dispMode==DISPLAY_ANGLE_FROM_WALL:
+            displayData("A.",checkAngleFromWall())
+        if TM.switches[1]: #switch display mode
             displayString("--------")
             sleep(0.2)
-            dispMode=(dispMode+1)%6
-        # if TM.switches[7]:
-        #     displayString("EXIT")
-        #     log.error("EXIT")
-        #     GPIO.cleanup()
-            
-        #     os._exit(0)
-        log.info("x: %s y: %s"%(getAbsX(),getAbsY()))
-        if findNearestPointAbs((90,205),(110,232))[1]==-1:
+            dispMode=(dispMode+1)%8
+        if TM.switches[7]:
+            displayString("EXIT")
+            log.error("EXIT")
+            GPIO.cleanup()   
+            os._exit(0)
+        if open:
+            rightWall=findNearestPointAbs((90,250),(110,290),back=False)
+            leftWall=findNearestPointAbs((-10,250),(10,290),back=False)
+        else:
+            rightWall=findNearestPointAbs((90,205),(110,232),back=False)
+            leftWall=findNearestPointAbs((-10,205),(10,232),back=False)
+        if rightWall[1]==-1:
 
             setLed(7,True)
         else:
             setLed(7,False)
-        if findNearestPointAbs((-10,205),(10,232))[1]==-1:
+        if leftWall[1]==-1:
             direction=-1
             setLed(6,True)
         else:
             direction=1
             setLed(6,False)
-    
+    log.info("Initloop over")
     return color, object
 
 parkPos = -1
@@ -733,9 +799,12 @@ trafficSignMatrix = [
     [0,0,0],
     [0,0,0]
 ]
+'''For storing the detected traffic signs'''
 
-currentSection = 0
+section = 0
+'''Current section'''
 def findFirst(section):
+    '''Returns the color of the first traffic sign in the section'''
     colorPos=0
     for i in range(3):
         if trafficSignMatrix[section][i]!=0:
@@ -743,78 +812,97 @@ def findFirst(section):
             return trafficSignMatrix[section][i],i
 
 def findLast(section):
+    '''Returns the color of the last traffic sign in the section'''
     colorPos=0
     for i in range(3):
         if trafficSignMatrix[section][2-i]!=0: return trafficSignMatrix[section][2-i],i
 
 
 dontReverse = False
+'''Used for optimization'''
 def turnAround():
-    global dontReverse
+    '''180° turn around a red traffic sign'''
+    # global dontReverse
     global heading0
     global doDetection
+    global lane
     doDetection=False
-    if lane==LANE_RIGHT:
+    if lane==LANE_RIGHT: #always the case
 
-        waitAbsLidar(0,70)
-        arc(-70,defaultSpeed)
-        waitAbsLidar(-90,20)
+        waitAbsLidar(0,40)
+        arc(-90,defaultSpeed)
+        # waitAbsLidar(-90,20)
         go(-defaultSpeed,-90)
-        waitAbsLidar(-90,40,decreasing=False)
-        stop()
-        go(1000,-180)
         waitForHeading()
-        dontReverse = True
+        if direction==DIRECTION_RIGHT:
+            waitAbsLidar(-90,35,decreasing=False)
+        else:
+            waitTOF(65)
+        stop()
+        arc(-180)
+        stop()
+        # go(1000,-180)
+        # dontReverse = True
         heading0 -= 180
         updHeading()
+        lane=0.5
 
 parkPos=-1
-
+'''The position of the parking space'''
 doDetection=True
+'''Set to false if all traffic signs are detected'''
 defaultSpeed=1000
+'''The default speed, most functions use this by default'''
 def reverseMatrix():
+    '''Reverses the trafficSignMatrix when turnind around. Also sets the parking space postion accordingly'''
     global trafficSignMatrix
     global parkPos
     parkPos=3-parkPos
-    #TODO:PARKPOS ÁTGONDOL
     trafficSignMatrix.reverse()
     for i in range(len(trafficSignMatrix)):
         trafficSignMatrix[i].reverse()
         for j in range(len(trafficSignMatrix[i])):
             trafficSignMatrix[i][j]*=-1
 rightLaneOffset, leftLaneOffset=0,0
+'''Lane offsets for when there is a parking space next to the robot'''
 startTime=-1
+'''T0, when the robot starts'''
+finalSection=12
+'''Final section variable, if the robot turns around is decreased by 1'''
 def obstacleChallangeRun():
+    '''The obstacle challange robot run'''
     global direction
     global startTime
+    global finalSection
     log.info("START")
-    color, object = initLoop()
-    startTime=time()
+    color, object = initLoop(open=False)
+    log.info("IO")
+    startTime=time.time()
     log.info("Direction is %s"%direction)
     global trafficSignMatrix
-    global currentSection
+    global section
     global doDetection
     global dontReverse
     global leftLaneOffset
     global rightLaneOffset
     global parkPos
     if direction==DIRECTION_LEFT:
-        parkObj=findNearestPointAbs((80,190),(90,210))
+        parkObj=findNearestPointAbs((80,190),(90,210),back=False)
         px, py=parkObj[0], parkObj[1]
         if py!=-1: rightLaneOffset=20
     if object[1]==-1:
         switchLane(LANE_LEFT*direction)
     else:
         if color == GREEN:
-            switchLane(LANE_LEFT,False)
+            switchLane(LANE_LEFT,steep=True)
             
         elif color == RED:
-            switchLane(LANE_RIGHT,False)
-        trafficSignMatrix[currentSection%4][2]=color*(-1 if object[0] < 50 else 1)
+            switchLane(LANE_RIGHT,steep=True)
+        trafficSignMatrix[section%4][2]=color*(-1 if object[0] < 50 else 1)
     turnCorner()
 
     i=1
-    while i<13:
+    while i<=finalSection:
     # for i in range(1,13):
 
         section=i
@@ -825,19 +913,22 @@ def obstacleChallangeRun():
                 parkObj=findNearestPointAbs((10,90),(20,150))
             px,py=parkObj[0],parkObj[1]
             if py!=-1: parkPos=section%4
+
         if parkPos%4==section%4 and parkPos!=-1:
             if direction==DIRECTION_RIGHT:
                 leftLaneOffset=20
+                rightLaneOffset=0
             else:
                 rightLaneOffset=20
+                leftLaneOffset=0
         else:
             leftLaneOffset=0
             rightLaneOffset=0
-        currentSection = i
-        log.section = currentSection
+
+        log.section = section
         if not dontReverse:
             go(-defaultSpeed,0)
-            waitUS(50)
+            waitTOF(50)
             # waitAbsLidar(0,250,decreasing=False)
         if doDetection:
             #DETECTION
@@ -853,11 +944,11 @@ def obstacleChallangeRun():
                 signRow = 0 if sy < 125 else 1
                 signColumn = -1 if sx < 50 else 1
                 signColor = checkColor()
-                trafficSignMatrix[currentSection%4][signRow] = signColor * signColumn
-            if currentSection== 8:
+                trafficSignMatrix[section%4][signRow] = signColor * signColumn
+            if section== 4:
                 doDetection = False
         if not dontReverse:
-            waitUS(40)
+            waitTOF(40)
             # waitAbsLidar(0,260,decreasing=False)
             stop()
 
@@ -867,33 +958,35 @@ def obstacleChallangeRun():
 
             if signRow != -1:
                 switchLane(LANE_LEFT if signColor == GREEN else LANE_RIGHT)
+            else:
+                switchLane(-direction)
             
             if signRow != 1:
-                waitUS(120,decreasing=False)
-                # waitAbsLidar(0,180)
-                signPos = findNearestPointAbs((25,180),(75,220))
+                # waitTOF(120,decreasing=False)
+                waitAbsLidar(0,180)
+                signPos = findNearestPointAbs((25,180),(75,220),back=False)
                 sx, sy = signPos[0], signPos[1]
                 if sy != -1:
                     signRow = 2
                     signColumn = -1 if sx < 50 else 1
                     signColor = checkColor()
-                    trafficSignMatrix[currentSection%4][signRow] = signColor * signColumn
+                    trafficSignMatrix[section%4][signRow] = signColor * signColumn
                 if signRow == 2:
-                    switchLane(LANE_LEFT if signColor == GREEN else LANE_RIGHT)
+                    switchLane(LANE_LEFT if signColor == GREEN else LANE_RIGHT, steep=True)
                 
             if signRow == -1: log.error("Empty section!!!!!")
 
         else:
             #OPTIMIZED - NO DETECTION
-            switchLane(LANE_LEFT if abs(findFirst(currentSection%4)[0]) == GREEN else LANE_RIGHT)
-            if currentSection==12:
+            switchLane(LANE_LEFT if abs(findFirst(section%4)[0]) == GREEN else LANE_RIGHT)
+            if section==finalSection:
                 waitAbsLidar(0,135)
                 stop()
-                log.error("FINISHED WITH TIME %s"%(time()-startTime))
+                log.error("FINISHED WITH TIME %s"%(time.time()-startTime))
                 os._exit(0)
-            if trafficSignMatrix[currentSection%4][2]!=0:
+            if trafficSignMatrix[section%4][2]!=0:
                 waitAbsLidar(0,180)
-                switchLane(LANE_LEFT if abs(trafficSignMatrix[currentSection%4][2]) == GREEN else LANE_RIGHT)
+                switchLane(LANE_LEFT if abs(trafficSignMatrix[section%4][2]) == GREEN else LANE_RIGHT, steep=True)
         #JOINED
         if readAbsLidar(0)>150:
             # setTargetSpeed(3000)
@@ -901,24 +994,28 @@ def obstacleChallangeRun():
         waitAbsLidar(0,90)
         setTargetSpeed(defaultSpeed)
         
-        if currentSection==7 and abs(findLast(3)[0])==RED:
+        if section==7 and abs(findLast(3)[0])==RED:
+            log.info("TURNING AROUND")
+            turnAround()
             reverseMatrix()
             direction*=-1
-            i+=1
-            turnAround()
+            finalSection-=1
         else:
-
             turnCorner()
         i+=1
     
-
 def testRun():
+    '''Test run used for testing'''
     global pilotHeadingTarget
     global trafficSignMatrix
-    
+    global direction
     initLoop()
+    direction=DIRECTION_RIGHT
+    setLane(wallDirection=-1,targetDistance=20)
+    stop()
+    # initLoop()
     # beepPWM(440)
-    log.info(checkLidarDeadspace())
+    # log.info(checkLidarDeadspace())
 
     # pilotHeadingTarget=180
     # l1=readAbsLidar(-90)
@@ -927,5 +1024,6 @@ def testRun():
     # l2=readAbsLidar(90)
     # display_data((l2-l1))
 
-obstacleChallangeRun()
+testRun()
 stop()
+#END
