@@ -82,7 +82,7 @@ Designing and printing out different parts of the robot was one of our biggest t
   >- On top of the little bar on both sides another set of **thicker bars have been added in the four corners,** which greatly improved stability.
   >- Before printing it has been rotated by $90°$ so that the **printing lines would be in a stronger orientation.**
 
-  This version has worked for a long time, even if it was tilting a little, because the small base, until during one of our testings, a dog has run over the robot and **broke it at the screw holes.**
+  This version has worked for a long time, even if it was tilting a little, because the small base, until testing, our dog run over the robot and **snapped it at the screw holes.**
   
   ![2nd design version 3](2_3.png)<br><br>[STL file](Camera%20stand%202%20v3.stl)
   
@@ -91,10 +91,10 @@ Designing and printing out different parts of the robot was one of our biggest t
   This is the version we are using right now and hopefully will be continuing using, **without needing to make any changes.**
 
   [The documentation we used](https://docs.pixycam.com/wiki/doku.php?id=wiki:v2:dimensions&s[]=dimensions)
-  *On the image it says that the two screw holes have a distance of $6mm$ however this is incorrect accoring to the description given below and calculations we did ourselves.*
+  *On the image it says that the two screw holes have a distance of $6mm$ however this is incorrect according to the description given below and calculations we did ourselves.*
 
 ---
 
 ## Conclusion
   
-  Designing custom 3d printed parts is hard and while sometimes we can get lucky, like with the lidar mount, **other times it may take a long time and multiple vesions until we get it right.** The step by step guide was written according to the **things we learned during our process and things we will be doing in the future.** Making sure that a design is good can be one of the most important steps during the entire process of making a robot. It is of the upmost importance to make sure that **the amazing software one might have doesn't get bottlenecked by bad parts.**
+  Designing custom 3d printed parts is hard and while sometimes we can get lucky, like with the lidar mount, **other times it may take a long time and multiple versions until we get it right.** The step by step guide was written according to the **things we learned during our process and things we will be doing in the future.** Making sure that a design is good can be one of the most important steps during the entire process of making a robot. It is of the upmost importance to make sure that **the amazing software one might have doesn't get bottlenecked by bad parts.**
