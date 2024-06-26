@@ -17,6 +17,7 @@ Designing and printing out different parts of the robot was one of our biggest t
   After we found to correct location we made a very, **very simplistic sketch** of what we wanted.
   
   <a name="sketch"></a>
+  
   ![Sketch for the camera stand](sketch.jpg)
 
 ### 2. Gathering usable documentation
@@ -36,7 +37,7 @@ Designing and printing out different parts of the robot was one of our biggest t
   We printed our parts with a *PRUSA mini+* and used *PrusaSlicer*, but any 3d printer and software will do as long as it has a **large enough print** area and supports the **right types of filament**. We suggest that for more **aesthetic parts a 30% infill** is used and for **more structural ones a 60%**. It may also seem trivial but the **angle and orientation** in which the part is printed matters a lot to. For example **for tires a $45°$ tilt** is suggested to make sure that it **won't come apart parallel to the print lines.**
 
 ### 5. Printing out the part
-  Here there is not much to look out for, just make sure that the **printer's settings are right,** there is enough filament and the **supports are sufficient.**
+  Here there is not much to look out for, just make sure that the **printer's settings are right,** there is enough filament and the **supports are sufficient.** What type of filament is used doesn't really matter that much aswell, as long as it is not a flexible filament like TPU. We used *Prusament PLA*, but PETG is probably fine too.
 
 ---
 
