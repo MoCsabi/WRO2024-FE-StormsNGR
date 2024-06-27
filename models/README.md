@@ -54,7 +54,7 @@ Designing and printing out different parts of the robot was one of our biggest t
   
   > **Mounting it securely while leaving enough space for a wide field of view.**
 
-  We solved this by only mounting it from the back with two screws, which does give up a lot of stability we, **still found it sufficient for this use case**.
+  We solved this by only mounting it from the back with two screws, which does give up a lot of stability, but we **still found it sufficient for this use case**.
   [The documentation we used (Page 7 is the most important)](https://www.ldrobot.com/images/2023/05/23/LDROBOT_LD19_Datasheet_EN_v2.6_Q1JXIRVq.pdf)
 
   ![Picture of the final result](mount_photo.png)
