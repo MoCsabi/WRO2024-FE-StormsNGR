@@ -1,6 +1,6 @@
 # RpiCode installation and features guide
 
-In this guide I will talk about our VSCode extension RpiCode, how to install it, set it up, and what kind of features it provides. **This extension is still heavily work in progress,** however the feature it doeas already have are in a usable enough state to use it daily.
+In this guide I will talk about our VSCode extension RpiCode, how to install it, set it up, and what kind of features it provides. **This extension is still heavily work in progress,** however the feature it does already have are in a usable enough state to use it daily.
 
 ---
 
@@ -21,7 +21,7 @@ In case you change the downloaded files name, **change rpicode in the command to
 
 ### Installing the required python libraries
 
-In this step I'm going to assume that python and pip have already been downloaded, **however if not, then visit our software [installation guide](/src/README.md)**].
+In this step I'm going to assume that python and pip have already been downloaded, **however if not, then visit our software [installation guide](/src/)**].
 
 In the terminal type the following commands:
 > pip install PyQt6
@@ -93,7 +93,7 @@ If everything is done correctly then the extension should start on startup.
         - Absolute
           **The dots' orientation are set to the wall in front,** and now the line follows the robot's direction.
         - Lock
-          **The orientatien stays the same the whole time, just like how it was in the starting position.**
+          **The orientation stays the same the whole time, just like how it was in the starting position.**
           The line follows the robot's direction.
       
       ![visualizer](visualizer.png)
@@ -103,10 +103,10 @@ If everything is done correctly then the extension should start on startup.
       While playing back the run, **every logged message will also reappear in the main window according to when it was initially printed.**
 
       Under the the radar button in the main window there is a selection box. By default it has ony two states. `Remote` and  `Local`. **Remote plays back the last run on the robot, and local plays back the last downloaded run on the computer.**
-      Additional options can be added by in VSCode inside the connected features, pressing `Get logs`. This replaces the current logs inside `Folder Path/logs` and puts a new set of logs into the folder named `backup_logs` which is inside the parent directory of `Folder Path`. Inside the `backup_logs` they appear in a new folder called `logs_month_date_hour_minute` according to when it was downoaded. **This folder will appear as a new option next to `Remote` and `Local` in the selection box.**
+      Additional options can be added by in VSCode inside the connected features, pressing `Get logs`. This replaces the current logs inside `Folder Path/logs` and puts a new set of logs into the folder named `backup_logs` which is inside the parent directory of `Folder Path`. Inside the `backup_logs` they appear in a new folder called `logs_month_date_hour_minute` according to when it was downloaded. **This folder will appear as a new option next to `Remote` and `Local` in the selection box.**
 
 - ### The file handler
-  This is the newest addition to our extension. **It is still work in progress and other thing will be added to it in the future.** When connected to the robot a new treeview will appear in the expolorer named `RPi files`. It will show the files and subdirectories inside the `Send Folder Path` folder on the raspberry. By clicking on any of the files vscode will open that file in an editor and when **saved, will overwrite the file on the remote device.** For now this is all it can do, but there are a lot of things already planned.
+  This is the newest addition to our extension. **It is still work in progress and other thing will be added to it in the future.** When connected to the robot a new treeview will appear in the explorer named `RPi files`. It will show the files and subdirectories inside the `Send Folder Path` folder on the raspberry. By clicking on any of the files vscode will open that file in an editor and when **saved, will overwrite the file on the remote device.** For now this is all it can do, but there are a lot of things already planned.
 
   ![files](files.png)
 
@@ -131,7 +131,7 @@ If everything is done correctly then the extension should start on startup.
 
 - ### Offline mode
  
-  **Even if for some reason the robot is not available, the extension can still be used.** After pressing `Create Connection` a bit more time will pass, since the extension will still try to connect, but when it can't **it will start in offline moode.** Offline mode offers every feature that does not require `SSH` or `SFTP`. **The debugger will also work,** except there will be no start button, send input bar nor `Remote` option.
+  **Even if for some reason the robot is not available, the extension can still be used.** After pressing `Create Connection` a bit more time will pass, since the extension will still try to connect, but when it can't **it will start in offline mode.** Offline mode offers every feature that does not require `SSH` or `SFTP`. **The debugger will also work,** except there will be no start button, send input bar nor `Remote` option.
 
 ---
 
@@ -143,4 +143,4 @@ If everything is done correctly then the extension should start on startup.
 
 ## Conclusion
 
-Making this extension was a suprisingly big part of this project, which took a considerable amount of hours to make, **but in return helped us during the testing phase of the robot tremendously.**
+Making this extension was a surprisingly big part of this project, which took a considerable amount of hours to make, **but in return helped us during the testing phase of the robot tremendously.**
