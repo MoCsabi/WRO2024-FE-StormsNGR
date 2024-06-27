@@ -1,4 +1,4 @@
 Vehicle's photos
 ====
 
-This directory must contain 6 photos of the vehicle (from every side, from top and bottom)
+This directory contains 6 photos, one from each direction and one extra in order to see what's on the lower deck of the robot.
