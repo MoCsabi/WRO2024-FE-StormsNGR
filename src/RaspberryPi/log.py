@@ -28,7 +28,7 @@ class main_log():
             
     def temp_save(self,message,level=""):
         """Logs the last 150 lines to a seperate temporary file for a custom vscode extension to use.
-        It saves the raw text inputed line by line without extra info, only saving the logging level at the end of every line,
+        It saves the raw text inputted line by line without extra info, only saving the logging level at the end of every line,
         which is then used to display the logs in different colors:
         * debug - blue
         * info - white
@@ -56,7 +56,7 @@ class main_log():
         self.critical(''.join(traceback.format_exception(err.exc_type, err.exc_value, err.exc_traceback)))
     
     def main_error(self,a,b,c):
-        """Handels exceptions on the main thread."""
+        """Handles exceptions on the main thread."""
         self.critical(''.join(traceback.format_exception(a,b,c)))
     
     def debug(self,message):
@@ -103,7 +103,7 @@ class main_log():
     sys.excepthook = main_error
     threading.excepthook = thread_error
     
-    def close(self,func: function,register = True):
+    def close(self,func,register = True):
         """Function that can be used to register and unregister other functions to run upon standard exit without exception."""
         if register:
             atexit.register(func)

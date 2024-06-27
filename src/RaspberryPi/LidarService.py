@@ -24,7 +24,7 @@ s = serial.Serial(
     port="/dev/ttyAMA0", baudrate=230400, bytesize=8, timeout=2, stopbits=serial.STOPBITS_ONE, parity="N",
 )
 
-def feldolgoz_packet(packet_in:list):
+def process_packet(packet_in:list):
     global DISTANCE_MAP
     start_angle=packet_in[5]*256+packet_in[4]
     end_angle=packet_in[43]*256+packet_in[42]
@@ -45,10 +45,10 @@ def read_data():
     global t0
     while True:
 
-        feldolgoz_byte((s.read()[0]))
-        if time()>=t0+0.01 and onLoop!=None:
-            onLoop()
-            t0=time()
+        process_byte((s.read()[0]))
+        # if time()>=t0+0.05 and onLoop!=None:
+        #     onLoop()
+        #     t0=time()
 
         # print(TERKEP_DISTANCE)
         # print(errors)
@@ -56,7 +56,7 @@ def read_data():
 
 
 
-def feldolgoz_byte(byte:int):
+def process_byte(byte:int):
     global count
     global act_state
     global errors
@@ -81,7 +81,7 @@ def feldolgoz_byte(byte:int):
         if count>=PACKET_SIZE:
             act_state=STATE.HEADER
             count=0
-            feldolgoz_packet(byte_packet)
+            process_packet(byte_packet)
 LIDAR_DANGERZONE_START=-130
 LIDAR_DANGERZONE_END=130
 

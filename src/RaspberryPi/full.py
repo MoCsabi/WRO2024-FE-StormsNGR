@@ -2,6 +2,8 @@
 '''The main python file, it contains the code for both robot runs and helper functions'''
 import json
 from math import asin, cos, pi, atan, ceil, copysign, floor, sin, sqrt
+import os
+import random
 import threading
 from time import sleep, time
 from log import *
@@ -31,7 +33,7 @@ RED=2
 '''Constant for the color Red. Used for obstacle color detection and storing.'''
 import pixy
 # TODO: Pixy camera currently not in use
-pixy.init()
+
 colorMatrixPrequel = [GREEN,RED]
 getColorCounter = 1
 
@@ -62,6 +64,7 @@ def checkColor()->int:
         CAM_LEFT_CUTOFF=150
         CAM_RIGHT_CUTOFF=CAM_WIDTH
     # getColorCounter += 1
+    # pixyObjects.append((110+random.randint(0,100),120+random.randint(-10,10),10+random.randint(-2,5),20+random.randint(-2,5),colorMatrixPrequel[(getColorCounter-1)%len(colorMatrixPrequel)],True))
     # log.info("color: %s"%colorMatrixPrequel[(getColorCounter-1)%len(colorMatrixPrequel)])
     # return colorMatrixPrequel[(getColorCounter-1)%len(colorMatrixPrequel)]
     temp_pixyObjects=[]
@@ -90,7 +93,7 @@ def checkColor()->int:
         return defaultColor
 
 
-wIntergral=0
+wIntegral=0
 '''Wall distance following integral variable'''
 wLastError=0
 '''Wall distance following last error variable for derivative'''
@@ -149,10 +152,10 @@ def go(speed:int,headingTarget:int, pilotModeIn:int=PILOT_NONE, wallDistance:int
     pilotMode: If left at default value no piloting, otherwise set given pilotmode (PILOT_FOLLOW_LEFT, PILOT_FOLLOW_RIGHT)
     wallDistance: Only relevant if pilotMode is not PILOT_NONE, sets target wall distance for wall following'''
     global pilotHeadingTarget
-    global wIntergral
+    global wIntegral
     log.debug("go with speed: %s headingT: %s pilotMode: %s walldist: %s"%(speed,headingTarget,pilotModeIn,wallDistance))
-    #reset wall following integral variable to ansure no previous buildup is kept
-    wIntergral=0
+    #reset wall following integral variable to ensure no previous buildup is kept
+    wIntegral=0
     setTargetSpeed(speed)
     setPilotMode(pilotModeIn,wallDistance)
     pilotHeadingTarget=headingTarget
@@ -179,7 +182,7 @@ def isInsideRect(botLeft,topRight,point):
     '''Checks whether given point (x,y) is inside rectangle defined by point bottom left (x,y) and top right (x,y)'''
     return point[0]>=botLeft[0] and point[0]<=topRight[0] and point[1]>=botLeft[1] and point[1]<=topRight[1]
 
-WARNING_DZ_TOLERANCE=3
+WARNING_DZ_TOLERANCE=5
 '''Lidar deadzone tolerance, robot won't signal an error message if angle is within tolerance of deadzone'''
 def readLidar(degree)->int:
     '''Returns the lidar distance at the given angle from the stored array of angles. Also avoids the lidar deadzone'''
@@ -240,13 +243,34 @@ def findNearestPoint(botLeft:tuple,topRight:tuple):
     if nearestPoint[1]==10000000: nearestPoint=(-1,-1)
     return nearestPoint
 LIDAR_TOF_DIST=21
-'''Distance between ultrasnoic sensor and lidar'''
-
+'''Distance between ultrasonic sensor and lidar'''
+TOFactive=True
+@func_thread
+def tofLoop():
+    while True:
+        if TOFactive:
+            updTOF()
+        sleep(0.1)
+@func_thread
+def IMULoop():
+    while True:
+        t0=time.time()
+        d0=getHeading()
+        updHeading()
+        if abs(getHeading()-d0)>3:
+            log.error("Gyro jumped! %s from %s to %s"%((getHeading()-d0),d0,getHeading()))
+            beep_parallel()
+        if time.time()-t0>0.2:
+            log.error("Gyro timed out! %s"%(time.time()-t0))
+            beep_parallel()
+        sleep(0.02)
 def updTOF():
     '''Update stored laser time-of-flight sensor reading'''
     global lastTOFDist
+    # t0=time.time()
     dist=distSensor.get_distance()/10+LIDAR_TOF_DIST
     if dist<200: lastTOFDist=dist
+    # log.info('dtime: %s'%(time.time()-t0))
 
 def getTOF()->float:
     '''Returns last stored laser time-of-flight sensor reading'''
@@ -257,14 +281,14 @@ def getTOF()->float:
 
 def waitTOF(cm,decreasing=True):
     '''Wait until laser time-of-flight sensor detects distance smaller (or larger) than cm'''
-    log.info("waitTOF cm %s decresing? %s"%(cm,decreasing))
+    log.info("waitTOF cm %s decreasing? %s 0: %s"%(cm,decreasing,getTOF()))
     condition=True
     while condition:
         dist=getTOF()
-        log.debug(dist)
         if decreasing: condition=(cm<dist)
         else: condition=(cm>dist)
         sleep(0.05)
+    log.info("waitTof out at %s"%getTOF())
 
 def waitAbsLidar(angle:int, cm:int, precision=None, decreasing=True):
     '''Waits until lidar at given angle measures smaller (or larger, based on *decreasing*) distance'''
@@ -313,17 +337,24 @@ def angleDiff(angle1,angle2)->int:
         diff=diff-360
     return diff
 WAIT_FOR_HEADING_TOLERANCE:int=2
-'''The robot will consider itself at the corract angle if actual angle is only off by this much'''
-def waitForHeading(tolerance=None):
+'''The robot will consider itself at the correct angle if actual angle is only off by this much'''
+def waitForHeading(tolerance=None, turnDir=0):
     '''Waits until robot faces pilotHeadingTarget (variable) angle
-    tolerance: Customizable tolerance, default is the constant WAIT_FOR_HEADING_TOLERANCE'''
+    tolerance: Customizable tolerance, default is the constant WAIT_FOR_HEADING_TOLERANCE (2)
+    direction: 1: robot is turning right, -1: robot is turning left, 0: any direction
+    '''
     if tolerance==None: tolerance=WAIT_FOR_HEADING_TOLERANCE
-    while abs(angleDiff(getHeading(),pilotHeadingTarget))>tolerance:
-        sleep(0.01)
+    log.debug("waiting for heading %s tolerance: %s"%(pilotHeadingTarget,tolerance))
+    if turnDir==0:
+        while abs(angleDiff(getHeading(),pilotHeadingTarget))>tolerance:
+            sleep(0.01)
+    else:
+        while angleDiff(getHeading(),pilotHeadingTarget)*turnDir*-1>=tolerance:
+            sleep(0.01)
 
 def stop(breakForce:int=None, wait:bool=True):
     '''Stops the robot
-    breakForce: If given, default breking (counter-driving) force is overridden
+    breakForce: If given, default breaking (counter-driving) force is overridden
     wait: Wether the program should wait until the robot has stopped before resuming'''
     global actSpeed
     global targetSpeed
@@ -354,16 +385,21 @@ actSpeed:int=0
 def setTargetSpeed(tSpeed:int):
     '''Sets the raspberry pi side target speed'''
     global targetSpeed
-    targetSpeed=tSpeed
-
+    # targetSpeed=tSpeed
+    setSpeed(tSpeed)
+lidarRevT0=time.time()
 #This method gets called about 10 times a second, when the lidar finishes a revolution
 def pilotRobot():
-    '''Function responsible for accelerating, logging information, updating the laser time of flight sitance sensor and wall following'''
-    global wIntergral
+    '''Function responsible for logging information, updating the laser time of flight sitance sensor and wall following'''
+    global wIntegral
     global wLastError
     global actSpeed
+    global lidarRevT0
     logLidar()
-    updTOF() #update stored us reading 10 times a second
+    if time.time()-lidarRevT0>0.5:
+        log.error("Lidar took too long! %s"%(time.time()-lidarRevT0))
+        beep_parallel()
+    lidarRevT0=time.time()
     
     # print(getHeading())
     # print("d: "+str(readAbsLidar(getHeading())))
@@ -374,8 +410,8 @@ def pilotRobot():
         pilotDistFromWall=readAbsLidar(pilotHeadingTarget-90)
         # print(pilotDistFromWall)
         error=(pilotDistFromWall-wallTarget)
-        wIntergral+=error
-        correction=-1*(error*wkP+wIntergral*wkI+(error-wLastError)*wkD)
+        wIntegral+=error
+        correction=-1*(error*wkP+wIntegral*wkI+(error-wLastError)*wkD)
         # display_data(error)
         if correction<-45: correction=-45
         if correction>20: correction=20
@@ -413,7 +449,15 @@ def logLidar():
     lidarRects=[]
     lidarDOI=[]
     pixyObjects=[]
-    log.lidar(json.dumps(lidarLogJSON))
+    t0=time.time()
+    dumped=json.dumps(lidarLogJSON)
+    if time.time()-t0>0.1:
+        log.error("JSON DUMP over %s"%(time.time()-t0))
+    t0=time.time()
+    log.lidar(dumped)
+    if time.time()-t0>0.1:
+        log.error("Dump over, elapsed %s"%(time.time()-t0))
+        beep_parallel()
 
 def checkAngle(angle:int)->bool:
     '''Old function used to determine wether there is a wall at given angle'''
@@ -445,8 +489,8 @@ def checkSide(side)->int:
             # print("found at "+str(i))
     return corrects
 
-def openChallangeRun():
-    '''The open challange robot run code'''
+def openChallengeRun():
+    '''The open challenge robot run code'''
     global heading0
     global pilotHeadingTarget
     global direction
@@ -463,14 +507,14 @@ def openChallangeRun():
 
     if not middle:
         log.info("targeting middle")
-        go(2000,-25*dir)
-        waitAbsLidar(-90*dir,30)
-        go(2000,0)
+        go(1000,-25*direction)
+        waitAbsLidar(-90*direction,30)
+        go(1000,0)
     else:
         go(2000,0)
     log.info("setting dir to %s"%direction)
     for i in range(12):
-        waitAbsLidar(0,50)
+        waitAbsLidar(0,55)
         arc(90*direction, 1000)
         heading0+=90*direction
         updHeading()
@@ -503,10 +547,10 @@ def setLane(wallDirection, targetDistance):
     targetDistance: How close to the wall the robot should go'''
     log.info("setlane dir %s tdist %s"%(wallDirection,targetDistance))
     d0=readAbsLidar(90*wallDirection)
-    if d0-targetDistance<SETLANE_MINIMUM: return
+    if abs(d0-targetDistance)<SETLANE_MINIMUM: return
     arcOffset=ARC_OFFSET_CM_LONG
     goAngle=43
-    if d0-targetDistance<=SETLANE_SHORT_LIMIT: 
+    if abs(d0-targetDistance)<=SETLANE_SHORT_LIMIT: 
         arcOffset=ARC_OFFSET_CM_SHORT
         goAngle=20
     if d0<targetDistance:
@@ -528,7 +572,7 @@ def switchLane(newLane:int, steep:bool=False):
     if newLane==lane:
         pass
     else:
-        targetDist=20+leftLaneOffset if newLane==LANE_LEFT else 80-rightLaneOffset
+        targetDist=20+leftLaneOffset if newLane==LANE_LEFT else 77-rightLaneOffset
         if steep:targetDist=100-targetDist
         if direction==DIRECTION_RIGHT:
             setLane(-1 if not steep else 1,targetDist)
@@ -545,13 +589,16 @@ def arc(toDegree, speed=None, percent=100):
     speed: Speed of the robot, default is the variable defaultSpeed
     percent: How much should the steering wheel turn in percentage. Default is 100'''
     global pilotHeadingTarget
+    turnDir=0
     log.debug("arc toDegree %s w speed %s turning percent %s"%(toDegree,speed,percent))
     if speed==None: speed=defaultSpeed
     setSteerMode(SMODE_NONE)
     if toDegree>getHeading():
         steer(copysign(percent,speed))
+        turnDir=1
     else:
         steer(-copysign(percent,speed))
+        turnDir=-1
     setTargetSpeed(speed)
     
     pilotHeadingTarget=toDegree
@@ -559,7 +606,7 @@ def arc(toDegree, speed=None, percent=100):
     #
     
     setVMode(int(copysign(1,speed)))
-    waitForHeading(tolerance=7)
+    waitForHeading(tolerance=7,turnDir=turnDir)
     setSteerMode(SMODE_GYRO)
     waitForHeading()
     log.info("arc over at %s"%getHeading())
@@ -589,7 +636,6 @@ def turnCorner():
     updHeading()
     log.info("turncorner over")
     dontReverse = False
-
 lastHeadingLock=threading.Lock()
 def updHeading():
     '''Updates the heading variable. Also catches anomalies'''
@@ -597,17 +643,10 @@ def updHeading():
     global lastHeading
     lastHeadingLock.acquire()
     tempHeading=(requestData(CMD_DATA_GYRO))
-    if tempHeading==0:
-        beep_short_parallel()
-        log.error("Received 0 from gyro!!")
-    if tempHeading==1:
-        log.error("Received 1 from gyro!!")
     if tempHeading==-1:
         log.error("Received -1 from gyro!!")
-    if tempHeading==-2:
-        log.error("Received -2 from gyro")
     if tempHeading!=-1:
-        lastHeading=(tempHeading/10)-heading0        
+        lastHeading=(tempHeading/10)-heading0
     lastHeadingLock.release()
 
 def getHeading()->int:
@@ -620,21 +659,21 @@ def getHeading()->int:
 #This function gets called 100 times a second
 def accelerate():
     '''Updates the gyro and accelerates'''
-    global actSpeed
-    updHeading()
+    # global actSpeed
+    # # updHeading()
     
-    if actSpeed!=targetSpeed:
-        if actSpeed>targetSpeed: actSpeed=(max(actSpeed-acceleration/20,targetSpeed))
-        if actSpeed<targetSpeed: actSpeed=(min(actSpeed+acceleration/20,targetSpeed))
-        # log.info("setting speed %s"%actSpeed)
-        setSpeed(actSpeed)
-    pass
+    # if actSpeed!=targetSpeed:
+    #     if actSpeed>targetSpeed: actSpeed=(max(actSpeed-acceleration/20,targetSpeed))
+    #     if actSpeed<targetSpeed: actSpeed=(min(actSpeed+acceleration/20,targetSpeed))
+    #     log.info("setting speed %s"%actSpeed)
+    #     setSpeed(actSpeed)
+    # pass
 
 RUN: bool = False
 '''Used for starting the robot run'''
 
 @func_thread
-def checkForInput():
+def checkForInputLoop():
     '''Function to detect input and act accordingly'''
     global RUN
     while True:
@@ -688,18 +727,20 @@ SERVO_MAX=435
 SERVO_MIN=228
 SERVO_SAFE_MAX=SERVO_MAX
 SERVO_SAFE_MIN=228
-
 def initLoop(open=False):
     '''Displays debug information and waits until a button is pressed
     open: Set to true to display open challange relevant information'''
     global heading0
     global direction
+    pixy.init()
     beep()
     dispMode=DISPLAY_LIDAR
     displayData(10101010)
     sync()
-    checkForInput()
+    checkForInputLoop()
     distSensor.start_ranging(VL53L0X_BETTER_ACCURACY_MODE)
+    tofLoop()
+    IMULoop()
     setServoMin(SERVO_SAFE_MIN) #SERVO SAFE LIMIT
     setServoMax(SERVO_SAFE_MAX) #SERVO SAFE LIMIT
     # sleep(5)
@@ -732,7 +773,8 @@ def initLoop(open=False):
             object=findNearestPointAbs((30,175),(70,225),back=False)
             if object[1] > -1:
                 setLed(5, False)
-                color=checkColor()
+                color=colorMatrixPrequel[0]
+                # color=checkColor()
                 if color == GREEN:
                     setLed(3,True)
                 else:
@@ -769,21 +811,22 @@ def initLoop(open=False):
             dispMode=(dispMode+1)%8
         if TM.switches[7]:
             displayString("EXIT")
-            log.error("EXIT")
+            log.critical("__EXIT__")
             GPIO.cleanup()   
-            os._exit(0)
-        if open:
-            rightWall=findNearestPointAbs((90,250),(110,290),back=False)
-            leftWall=findNearestPointAbs((-10,250),(10,290),back=False)
-        else:
-            rightWall=findNearestPointAbs((90,205),(110,232),back=False)
-            leftWall=findNearestPointAbs((-10,205),(10,232),back=False)
-        if rightWall[1]==-1:
+            os._exit(1)
+        rightWall=findNearestPoint((readAbsLidar(90)-10,readAbsLidar(0)-30),(readAbsLidar(90)+10,readAbsLidar(0)-10))
+        leftWall=findNearestPoint((-10-readAbsLidar(-90),readAbsLidar(0)-30),(10-readAbsLidar(-90),readAbsLidar(0)-10))
+        # if open:
+            
+        # else:
+        #     rightWall=findNearestPointAbs((90,205),(110,232),back=False)
+        #     leftWall=findNearestPointAbs((-10,205),(10,232),back=False)
+        if rightWall[0]==-1:
 
             setLed(7,True)
         else:
             setLed(7,False)
-        if leftWall[1]==-1:
+        if leftWall[0]==-1:
             direction=-1
             setLed(6,True)
         else:
@@ -869,8 +912,8 @@ startTime=-1
 '''T0, when the robot starts'''
 finalSection=12
 '''Final section variable, if the robot turns around is decreased by 1'''
-def obstacleChallangeRun():
-    '''The obstacle challange robot run'''
+def obstacleChallengeRun():
+    '''The obstacle challenge robot run'''
     global direction
     global startTime
     global finalSection
@@ -889,7 +932,10 @@ def obstacleChallangeRun():
     if direction==DIRECTION_LEFT:
         parkObj=findNearestPointAbs((80,190),(90,210),back=False)
         px, py=parkObj[0], parkObj[1]
-        if py!=-1: rightLaneOffset=20
+        if py!=-1:
+            rightLaneOffset=20
+            parkPos=0
+        
     if object[1]==-1:
         switchLane(LANE_LEFT*direction)
     else:
@@ -904,8 +950,8 @@ def obstacleChallangeRun():
     i=1
     while i<=finalSection:
     # for i in range(1,13):
-
         section=i
+        log.section = section
         if parkPos==-1:
             if direction==DIRECTION_LEFT:
                 parkObj=findNearestPointAbs((80,150),(90,210))
@@ -925,7 +971,7 @@ def obstacleChallangeRun():
             leftLaneOffset=0
             rightLaneOffset=0
 
-        log.section = section
+        
         if not dontReverse:
             go(-defaultSpeed,0)
             waitTOF(50)
@@ -951,7 +997,7 @@ def obstacleChallangeRun():
             waitTOF(40)
             # waitAbsLidar(0,260,decreasing=False)
             stop()
-
+        
         go(defaultSpeed,0)
         if doDetection:
             #STILL DETECT
@@ -983,7 +1029,7 @@ def obstacleChallangeRun():
                 waitAbsLidar(0,135)
                 stop()
                 log.error("FINISHED WITH TIME %s"%(time.time()-startTime))
-                os._exit(0)
+                os._exit(1)
             if trafficSignMatrix[section%4][2]!=0:
                 waitAbsLidar(0,180)
                 switchLane(LANE_LEFT if abs(trafficSignMatrix[section%4][2]) == GREEN else LANE_RIGHT, steep=True)
@@ -1024,6 +1070,7 @@ def testRun():
     # l2=readAbsLidar(90)
     # display_data((l2-l1))
 
-testRun()
+openChallengeRun()
 stop()
 #END
+os._exit(1)
