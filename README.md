@@ -20,8 +20,8 @@ List of all documentation:
 Our team consists of 2 members and a coach, we are the StormsNGR team from hungary. This is our third year competing together in WRO, but this is our first year in the Future Engineers category.
 
 >Members
-- **Csaba Molnár**
-- **András Gräff**
+- **Csaba Molnár** from [Érdi Vörösmarty Mihály High School](http://vmg-erd.hu/)
+- **András Gräff** from [Érdi Vörösmarty Mihály High School](http://vmg-erd.hu/)
 
 >Coach
 - **Zsolt Molnár**
