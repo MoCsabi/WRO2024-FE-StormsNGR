@@ -1,6 +1,6 @@
 # RpiCode installation and features guide
 
-In this guide I will talk about our VSCode extension RpiCode, how to install it, set it up, and what kind of features it provides. **This extension is still heavily work in progress,** however the feature it does already have are in a usable enough state to use it daily.
+In this guide I will talk about our VSCode extension RpiCode, how to install it, set it up, and what kind of features it provides. **This extension is still heavily work in progress,** however the features it does already have are in a good enough state to use it daily. It was created to be able to upload and download files to/from the Raspberry Pi, but it also has a powerful sensor visualizer and a debugger.
 
 ---
 
@@ -143,4 +143,4 @@ If everything is done correctly then the extension should start on startup.
 
 ## Conclusion
 
-Making this extension was a surprisingly big part of this project, which took a considerable amount of hours to make, **but in return helped us during the testing phase of the robot tremendously.**
+Making this extension was a surprisingly big part of this project, which took a considerable amount of hours to make, **but in return helped us during the testing phase of the robot tremendously.** This extension could prove useful for anyone programming on a Raspberry Pi, especially if they utilize **logging**.

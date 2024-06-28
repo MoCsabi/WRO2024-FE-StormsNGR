@@ -83,7 +83,7 @@ Designing and printing out different parts of the robot was one of our biggest t
   >- On top of the little bar on both sides another set of **thicker bars have been added in the four corners,** which greatly improved stability.
   >- Before printing it has been rotated by $90°$ so that the **printing lines would be in a stronger orientation.**
 
-  This version has worked for a long time, even if it was tilting a little, because the small base, until testing, our dog run over the robot and **snapped it at the screw holes.**
+  This version has worked for a long time, even if it was tilting a little, because the small base, until testing, our puppy run over the robot and **snapped it at the screw holes.**
   
   ![2nd design version 3](2_3.png)<br><br>[STL file](Camera%20stand%202%20v3.stl)
   
