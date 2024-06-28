@@ -10,12 +10,27 @@ List of all documentation:
 ### - [Connecting to the robot - RpiCode](/other/RpiCode/README.md)
 ### - [Robot photos](/v-photos/)
 ### - [Team photos](/t-photos/)
+### - [Special thanks](#special-thanks)
 
 ![Our robot](robot.jpg)
 # Our journey
 
   This text contains our struggles and achievements, which we have came across during our few months of preparation. **How many things we had to redesign,** how many things we had to figure out to make our robot work.
+## The team
+Our team consists of 2 members and a coach, we are the StormsNGR team from hungary. This is our third year competing together in WRO, but this is our first year in the Future Engineers category.
 
+>Members
+- **Csaba Molnár**
+- **András Gräff**
+
+>Coach
+- **Zsolt Molnár**
+
+Links to our socials:
+- **Facebook**: https://www.facebook.com/stormsteam/
+  - Here you can find updates about the team
+- **YouTube**: https://www.youtube.com/channel/UCyzm_Su7qoRCof-ZpbG_9Ig
+  - Here you can watch videos about past competitions
 ## Past experiences
 
   **Our team has been participating in WRO competitions for a few years now,** so obviously there were a few things we could carry over to Future Engineers even though **RoboMission is a really different category.** These were:
@@ -116,3 +131,5 @@ A list of higher level functions based on the lower level framework functions de
   - Turns around the last red traffic sign.
 ## Conclusion
 This being our first year in Future Engineers, we had a lot of work to do, but we are really proud of the end result. We managed to stick to our principles and make a great coding framework. This way implementing next year's extra rule won't be nearly as much of a challenge. 
+# Special thanks
+Special thanks to József Molnár from the [Budapest University of Technology and Economics](https://www.bme.hu/) Faculty of Mechanical Engineering for helping us with the preparations, György Fenyvesi for helping us develop our [custom made interconnect panel](/schemes/README.md/#custom-made-interconnect-panel-wiring-with-connections-labeled), József Gräff, our coach Zsolt Molnár and a bunch of others for helping us by reviewing all the documentation. And of course, to both our families for tolerating us taking up the entire living room with the robot mat 🙂.
