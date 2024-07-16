@@ -88,5 +88,31 @@ The different communication protocols used between the components of the robot a
 Communication between the Raspberry Pi and the computer is handled by our custom-made Visual Studio Code extension, RpiCode. It creates the SSH connection over WiFi or Ethernet. Between the Raspberry Pi and the microcontroller we have an `I2C` communication set up where the microcontroller is the slave and the Pi is the master. We created a custom command set that enables the Pi to request data (such as sensor readings) from the microcontroller or send data (for example the new target motor speed) to the microcontroller. Due to a weird bug that has to do with `I2C` and ESP microcontrollers we always have to request data twice on the Pi side, effectively halving the `I2C` bandwidth. We created a 'heartbeat' system between the two units. The Raspberry Pi sends a heartbeat pulse every tenth of a second, and if the ESP doesn't receive this signal it stops all motors and resets the servo. This is a failsafe in case the Raspberry program crashed while the motors are going.
 
 The Raspberry Pi receives data from the LiDAR using the `UART` communication protocol. We couldn't find a Python library for processing the LiDAR input, so we had to write our own. This can be found in [src/RaspberryPi/LidarService.py](/src/RaspberryPi/LidarService.py). The LiDAR's communication protocol is detailed here in the [official development manual](https://www.ldrobot.com/images/2023/05/23/LDROBOT_LD19_Datasheet_EN_v2.6_Q1JXIRVq.pdf) (starting at page 7). For the Led&Key panel we luckily found a preexisting Python library that we could just simply install. The same was true for the laser distance sensor which was on the same **I2C bus** as the ESP. More on these libraries in the [software setup guide](/src/README.md). Using the buzzer was also really simple, we just had to set the `+` pin to **HIGH** to start the sound and to **LOW** to stop it. For the Pixy Camera we followed [this tutorial](https://docs.pixycam.com/wiki/doku.php?id=wiki:v2:hooking_up_pixy_to_a_raspberry_pi2) to install the Python library. For the IMU we opted to use `UART-RVC` communication protocol. The RVC stands for Robot Vacuum Cleaner, because it's primarily used to help navigate automatic vacuum cleaners. We choose this mode because this was the simplest one to implement, the sensor just sends the positional data 100 times a second, no need for complicated requests. For the encoders we registered the **A** and **B** pins as interrupt pins, and counted how many times they go from **HIGH** to **LOW** or vice-versa, and from this we would calculate the speed of the robot. Steering with the servo is achieved by sending a `PWM` signal to the servo with the correct **dutycycle**. The motor driving code was originally planned to utilize differential drive, however since that is not allowed we are only using one output of the motor driver, to avoid any potential misunderstandings.
+## Drive
+This section explains how our robot moves, detailing our past as well as our current solutions and ideas at the time of the national finals.
+
+For steering, we utilize Ackerman steering geometry.
+In short, the inner wheel turn slightly more than the other, so the robot stays on the same arc without any slippage. Here's an image from the [Hiwonder documentation](https://drive.google.com/drive/folders/11k0gbcZExI4076KJ1d_CCIdDlopuYUwO) that illustrates the principle:
+
+![ackerman geometry](image.png)
+
+We use two kinds of turning, turning along an arc and turning until we arrive at the target angle (using the gyro). For turning along an arc we can use this formula to calculate servo rotation:
+$$θ=arctan \left( {H \over R} \right)$$
+($H$-distance between front and rear axles, $R$-target radius)
+
+For driving we wanted to use [Electronic Differential](https://en.wikipedia.org/wiki/Electronic_differential), which is simply simulating a differential using software by calculating the required force using the current angle of the servo.
+The formula for calculating the correct speeds of the two motors:
+$${V_l}=\frac V R*\left( R-\frac D 2 \right)$$
+$${V_r}=\frac V R*\left( R+\frac D 2 \right)$$
+
+($V_l$- left motor speed, $V_r$- right motor speed, $R$- current arc, $V$- robot tangential speed)
+
+This would have been the most ideal solution, as this way we could avoid complicated hardware components and also use the power of 2 DC motors easily. This is also how many modern real life electric cars operate (such as the [Tesla Model S](https://en.wikipedia.org/wiki/Tesla_Model_S#Powertrain) for example), and since the competition's main goal with car restrictions seem to be realism we thought this solution would be accepted. However, since this way cheating by not accurately simulating a differential is not easy to detect, this solution was not allowed. Instead, we agreed with the national head judge on a compromised solution that would be easier to verify and is more in line with the current rules. This solution was to wire the two motors in such a way that they get the same signal. This way we can still turn along an arc without slippage since even though the motors get the same power therefore the same torque they can still rotate at a **different RPM**, but they are no longer **connected independently**.
+
+A simple diagram showing this solution:
+
+![diagram](diagram.png)
+
+($M$- DC Motor)
 ## Conclusion
 We had quite a few difficulties during the assembly and planning process, but we are very proud of our work. If there are any problems or further questions don't hesitate to contact us at csabi@molnarnet.hu (Csaba) or andrasgraff@gmail.com (András)
