@@ -96,7 +96,7 @@ In short, the inner wheel turn slightly more than the other, so the robot stays 
 
 ![ackerman geometry](image.png)
 
-We use two kinds of turning, turning along an arc and turning until we arrive at the target angle (using the gyro). For turning along an arc we can use this formula to calculate servo rotation:
+We use two kinds of turning, turning along an arc or turning until a target degree is reached using **PID** control with the gyro. For turning along an arc we can use this formula to calculate the correct servo angle:
 $$θ=arctan \left( {H \over R} \right)$$
 ($H$-distance between front and rear axles, $R$-target radius)
 
@@ -107,7 +107,7 @@ $${V_r}=\frac V R*\left( R+\frac D 2 \right)$$
 
 ($V_l$- left motor speed, $V_r$- right motor speed, $R$- current arc, $V$- robot tangential speed)
 
-This would have been the most ideal solution, as this way we could avoid complicated hardware components and also use the power of 2 DC motors easily. This is also how many modern real life electric cars operate (such as the [Tesla Model S](https://en.wikipedia.org/wiki/Tesla_Model_S#Powertrain) for example), and since the competition's main goal with car restrictions seem to be realism we thought this solution would be accepted. However, since this way cheating by not accurately simulating a differential is not easy to detect, this solution was not allowed. Instead, we agreed with the national head judge on a compromised solution that would be easier to verify and is more in line with the current rules. This solution was to wire the two motors in such a way that they get the same signal. This way we can still turn along an arc without slippage since even though the motors get the same power therefore the same torque they can still rotate at a **different RPM**, but they are no longer **connected independently**.
+This would have been the most ideal solution, as this way we could avoid complicated hardware components and also use the power of 2 DC motors easily. This is also how many modern real life electric cars operate (such as the [Tesla Model S](https://en.wikipedia.org/wiki/Tesla_Model_S#Powertrain) for example), and since the competition's main goal with car restrictions seem to be realism we thought this solution would be accepted. However, since this way cheating by not accurately simulating a differential is not easy to detect, this solution was not allowed at the national finals. Instead, we agreed with the national head judge on a compromised solution that would be easier to verify and is more in line with the current rules. This solution was to wire the two motors in such a way that they get the same signal. This way we can still turn along an arc without slippage since even though the motors get the same power therefore the same torque they can still rotate at a **different RPM**, but they are **not connected independently** anymore.
 
 A simple diagram showing this solution:
 

@@ -49,7 +49,7 @@ Links to our socials:
 
 ## The current design
 
-  For our base this time we used the [Hiwonder Ackerman Intelligent Car](https://www.hiwonder.com/products/ackermann-steering-chassis?variant=40382428381271). This was a **huge step up** from the previous design. This time the car was stable and quite fast, but this doesn't mean everything was sunshine and rainbows, there were still a lot of issues we needed to focus on. For example, when the car was *exactly* the maximum size allowed, which was fine until we noticed, that when turning, **it slighty becomes wider which made it to large to compete.** To solve this issue, we just replaced the stock tires, with Lego spike ones, which were considerably smaller.
+  For our base this time we used the [Hiwonder Ackerman Intelligent Car](https://www.hiwonder.com/products/ackermann-steering-chassis?variant=40382428381271). This was a **huge step up** from the previous design. This time the car was stable and quite fast, but this doesn't mean everything was sunshine and rainbows, there were still a lot of issues we needed to focus on. For example, when the car was *exactly* the maximum size allowed, which was fine until we noticed, that when turning, **it slightly becomes wider which made it to large to compete.** To solve this issue, we just replaced the stock tires, with Lego spike ones, which were considerably smaller.
 
   ![Lego spike wheel](spike.jpg)
 
