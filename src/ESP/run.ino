@@ -12,8 +12,8 @@
 #define PWM_PIN_R 16 //Right motor PWM pin (speed control)
 #define LED_PIN 2 //Built-in Led on the ESP
 #define S_PWM_PIN 27 //Servo PWM pin (turning)
-#define I2C_SDA_PIN 25 //I2C communication SDA pin (with raspberry)
-#define I2C_SCL_PIN 26 //I2C communication SCL pin (with raspberry)
+#define SRL_TX_PIN 25 //Serial communication TX pin (with raspberry)
+#define SRL_RX_PIN 26 //Serial communication RX pin (with raspberry)
 #define IMU_RX_PIN 17 //Serial communication receive pin (gyroscope)
 #define IMU_TX_PIN 32 //Serial communication transmit pin (gyroscope)
 #define US_TRIGGER_PIN 18 //Ultrasonic sensor trigger pin (send soundwave)
@@ -22,17 +22,18 @@
 
 #define spwm_freq 50 //servo PWM frequency
 #define spwm_res 12 //servo PWM resolution (2^12)
-#define spwm_channel 0 //servo PWM channel
+// #define spwm_channel 0 //servo PWM channel
 #define motor_pwm_freq 50 //motor PWM frequency
+
 #define motor_pwm_res 12 //motor PWM resolution (2^12)
-#define leftm_pwm_channel 2 //left motor pwm channel !temporary
-#define rightm_pwm_channel 3 //right motor pwm channel !temporary
+// #define leftm_pwm_channel 2 //left motor pwm channel !temporary
+// #define rightm_pwm_channel 3 //right motor pwm channel !temporary
 
 #define I2C_ADDRESS 0x8 //I2C address of this ESP device
 
 //Commands: These are used in the communication between the ESP and the raspberry
 #define CMD_SYNC 17 //Synchronization command (raspberry)
-#define CMD_STEER  6 //Steering command (not used)
+#define CMD_STEER  6 //Steering command
 #define CMD_HEARTBEAT 7 //Heartbeat command signal
 #define CMD_LOG 8 //(retrieve)Log command
 #define CMD_SET_VMODE 9 //set vmode (velocity mode) command
@@ -43,6 +44,7 @@
 #define CMD_SET_SERVO_MAX 21 //set the maximum servo state
 #define CMD_SET_SERVO_MIN 22 //set the minimum servo state
 #define CMD_SET_SERVO_CENT 23 //set the central servo state
+#define CMD_SET_UNREG 25 //set unregulated motor power
 
 #define CMD_DATA_POSL 11 //retrieve left motor position command
 #define CMD_DATA_POSR 12 // retieve right motor position command
@@ -58,21 +60,24 @@
 
 #define SYNC_CODE 18 //synchronization command response
 
-#define STATUS_SYNC 1 //ESP is trying to sync with raspberry pi
+#define STATUS_SYNCING 1 //ESP is trying to sync with raspberry pi
 #define STATUS_CONNECTED 2 //ESP is successfully connected to raspberry pi
+
+#define PiSerial Serial1
 
 //VModes (velocity modes)
 #define V_FORWARD 1 //robot is moving forward
 #define V_BACKWARD -1 //robot is moving backward
 #define V_STOP 0 //robot is stationary
-#define V_BRAKE -2 //robot is brakeing (counter drive)
+#define V_BRAKE -2 //robot is braking (counter drive)
+#define V_UNREGULATED 2 //the motors are powered with a constatnt force without speed control
 
 //SModes (steer modes)
 #define S_NONE 0 //no steering
 #define S_GYRO 1 //gyro controlled steering (keeping the robot straight)
 
 //PID constants for dribing the motors
-#define kP 10
+#define kP 2
 #define kI 0
 #define kD 0
 
@@ -85,16 +90,17 @@ int SERVO_MIN=250; //maximum safe left state servo PWM
 int SERVO_MAX=415; //maximum safe right state servo PWM
 int SERVO_CENT=325; //calibrated central state servo PWM
 
-int conn_state=STATUS_SYNC;
+int conn_state=STATUS_SYNCING;
 int heartBeatT0=0; //last heartbeat time
 
 int posL=0;
 int posR=0;
-int posAvg=0;
-int lastAvg=0;
+// int posAvg=0;
+int lastTicks=0;
 int speed=0;
 int targetSpeed=0;
 int brakePowerPercent=10;
+int unregPower=0;
 
 volatile int distance, duration, usStart, lastUSread; //ultrasonic sensor variables
 volatile bool usSent=false; //is expecting an ultrasonic echo
@@ -124,7 +130,7 @@ int i2cResponse=-1;
 volatile int turnRatioL=1000;
 volatile int turnRatioR=1000;
 
-
+int steerPercentage=0;
 
 Adafruit_BNO08x_RVC rvc = Adafruit_BNO08x_RVC(); //gyro communication class in RVC mode
 void setDrivingDirection(int dir){
@@ -158,12 +164,24 @@ void sendUSPulse(){
 }
 //timer interrupt, run exactly 100 times a second, handles real speed calulation, PID driving motor control and PID steering control
 void IRAM_ATTR onTick(){
-  posAvg=(posL+posR)/2;
-  speed=(speed*7+(((posAvg-lastAvg) * 100)*3))/10;
-  lastAvg=posAvg;
+  // posAvg=(posL+posR)/2;
+  speed=(speed*80+(((posR-lastTicks) * 100)*20))/100;
+  lastTicks=posR;
+  
   switch(sMode){
     case S_NONE:
+    {
+      int duty=-1;
+      if(steerPercentage>0){
+        duty=(SERVO_MAX-SERVO_CENT)*abs(steerPercentage)/100+SERVO_CENT;
+      } else {
+        duty=SERVO_CENT-(SERVO_CENT-SERVO_MIN)*abs(steerPercentage)/100;
+      }
+      if(duty>SERVO_MAX) {duty=SERVO_MAX;}
+      if(duty<SERVO_MIN) {duty=SERVO_MIN;}
+      ledcWrite(S_PWM_PIN,duty);
       break;
+    }
     case S_GYRO:
       int yError=absYaw-targetYaw;
       integralY+=yError;
@@ -171,31 +189,49 @@ void IRAM_ATTR onTick(){
       lastYError=yError;
       if(duty>SERVO_MAX) {duty=SERVO_MAX;}
       if(duty<SERVO_MIN) {duty=SERVO_MIN;}
-      ledcWrite(spwm_channel,duty);
+      ledcWrite(S_PWM_PIN,duty);
   }
   switch(vMode){
+    case V_UNREGULATED:
+    {
+      if(unregPower>0){
+        setDrivingDirection(1);
+      } else{
+        setDrivingDirection(-1);
+      }
+      // ledcWrite(PWM_PIN_R, 1000);
+      // ledcWrite(PWM_PIN_L, 1000);
+      ledcWrite(PWM_PIN_R, int(4095/100*abs(unregPower)));
+      break;
+    }
     case V_STOP:
     {
-      ledcWrite(leftm_pwm_channel, 0);
-      ledcWrite(rightm_pwm_channel, 0);
+      ledcWrite(PWM_PIN_L, 0);
+      ledcWrite(PWM_PIN_R, 0);
       break;
     }
     case V_FORWARD:
     {
-      
+      // Serial.println("s, l ,r");
+      // Serial.println(speed);
+      // Serial.println(posL);
+      // Serial.println(posR);
       int error=targetSpeed-speed;
       integral+=error;
       int PWM=kP*error+integral*kI+(error-lastError)*kD;
       lastError=error;
       PWM=std::max(-4095/10,PWM);
       PWM=std::min(4095,PWM);
+      
       if(PWM<0){
         setDrivingDirection(-1);
       } else{
         setDrivingDirection(1);
       }
-      ledcWrite(leftm_pwm_channel, abs(PWM));
-      ledcWrite(rightm_pwm_channel, abs(PWM));
+      ledcWrite(PWM_PIN_L, abs(PWM));
+      ledcWrite(PWM_PIN_R, abs(PWM));
+      // ledcWrite(PWM_PIN_L, 1000);
+      // ledcWrite(PWM_PIN_R, 1000);
       break;
     }
     case V_BACKWARD:
@@ -213,8 +249,8 @@ void IRAM_ATTR onTick(){
       } else{
         setDrivingDirection(-1);
       }
-      ledcWrite(leftm_pwm_channel, abs(PWM));
-      ledcWrite(rightm_pwm_channel, abs(PWM));
+      ledcWrite(PWM_PIN_L, abs(PWM));
+      ledcWrite(PWM_PIN_R, abs(PWM));
       break;
     }
     case V_BRAKE:
@@ -232,8 +268,8 @@ void IRAM_ATTR onTick(){
         digitalWrite(FORWARD_PIN, LOW);
       }
       int brake=brakePowerPercent*pow(2,motor_pwm_res)/100;
-      ledcWrite(leftm_pwm_channel, brake);
-      ledcWrite(rightm_pwm_channel, brake);
+      ledcWrite(PWM_PIN_L, brake);
+      ledcWrite(PWM_PIN_R, brake);
       break;
     }
   }
@@ -251,21 +287,18 @@ void setup() {
   digitalWrite(BACKWARD_PIN, 0);
 
   //driving PWM setup
-  ledcSetup(leftm_pwm_channel, motor_pwm_freq, motor_pwm_res);
-  ledcAttachPin(PWM_PIN_L, leftm_pwm_channel);
-  ledcSetup(rightm_pwm_channel, motor_pwm_freq, motor_pwm_res);
-  ledcAttachPin(PWM_PIN_R, rightm_pwm_channel);
+  ledcAttach(PWM_PIN_L, motor_pwm_freq, motor_pwm_res);
+  ledcAttach(PWM_PIN_R, motor_pwm_freq, motor_pwm_res);
 
   //timer interrupts
-  hw_timer_t *timer=timerBegin(0,80,true);
-  timerAttachInterrupt(timer,&onTick,true);
-  timerAlarmWrite(timer,10000, true);
-  timerAlarmEnable(timer);
+  hw_timer_t *timer=NULL;
+  timer=timerBegin(10000);
+  timerAttachInterrupt(timer, &onTick);
+  timerAlarm(timer,100,true,0);
 
   //servo pwm
-  ledcSetup(spwm_channel, spwm_freq, spwm_res);
-  ledcAttachPin(S_PWM_PIN, spwm_channel);
-  ledcWrite(spwm_channel, SERVO_CENT);
+  ledcAttach(S_PWM_PIN, spwm_freq, spwm_res);
+  ledcWrite(S_PWM_PIN, SERVO_CENT);
 
   //encoder
   pinMode(A_PIN_L, INPUT);
@@ -280,11 +313,16 @@ void setup() {
   pinMode(US_TRIGGER_PIN, OUTPUT);
   pinMode(US_ECHO_PIN, INPUT);
   attachInterrupt(digitalPinToInterrupt(US_ECHO_PIN), echo, FALLING); //function 'echo' gets called when measurement is done
+  
   //led
   pinMode(LED_PIN,OUTPUT);
   // ledcAttachPin(LED_PIN, LED_C);
   // ledcSetup(LED_C, 4, 8);
-  // setLedStatus(STATUS_SYNC);
+  // setLedStatus(STATUS_SYNCING);
+  
+  //Serial communication (raspberry)
+  PiSerial.setPins(SRL_RX_PIN,SRL_TX_PIN);
+  PiSerial.begin(115200);
 
   //IMU (gyro)
   Serial2.setPins(IMU_RX_PIN, IMU_TX_PIN);  
@@ -292,10 +330,10 @@ void setup() {
   rvc.begin(&Serial2);
 
   //I2C COMM (raspberry)
-  Wire.setPins(I2C_SDA_PIN,I2C_SCL_PIN);
-  Wire.begin(I2C_ADDRESS);
-  Wire.onReceive(onI2CReceive);
-  Wire.onRequest(onI2CRequest);
+  // Wire.setPins(I2C_SDA_PIN,I2C_SCL_PIN);
+  // Wire.begin(I2C_ADDRESS);
+  // Wire.onReceive(onI2CReceive);
+  // Wire.onRequest(onI2CRequest);
   
 }
 //C++ template in order to avoid having to write 4 slightly different encoder pin detector methods. Keeps track of motors position.
@@ -312,7 +350,7 @@ void readEncoder(){
 }
 void setLedStatus(int status){
   switch(status){
-    case STATUS_SYNC:
+    case STATUS_SYNCING:
       digitalWrite(LED_PIN,LOW);
       break;
     case STATUS_CONNECTED:
@@ -322,59 +360,59 @@ void setLedStatus(int status){
 }
 //called if sync between ESP and raspberry is broken, immediately stops all motors and resets the servo
 void disconnect(){
+  Serial.println("in disconnect");
   vMode=V_STOP;
+  steerPercentage=0;
   sMode=S_NONE;
-  conn_state=STATUS_SYNC;
-  ledcWrite(spwm_channel,SERVO_CENT);
-  ledcWrite(leftm_pwm_channel,0);
-  ledcWrite(rightm_pwm_channel,0);
-  setLedStatus(STATUS_SYNC);
+  conn_state=STATUS_SYNCING;
+  ledcWrite(PWM_PIN_L,0);
+  ledcWrite(PWM_PIN_R,0);
+  setLedStatus(STATUS_SYNCING);
 }
-//sends an int to the raspberry pi via i2c
-void sendInt(int data, int len=4){
-  Wire.write(len);
-  for(int i=0;i<len;i++){
-    // Serial.println("d");
-    // Serial.println(((data>>(8*i)) & 255));
-    Wire.write((data>>(8*i)) & 255);
+//sends an int to the raspberry pi via serial
+void sendInt(int data){
+  for(int i=0;i<4;i++){
+    PiSerial.write((data>>(8*i)) & 255);
   }
-
 }
-//reads an incoming int from the raspberry via i2c
+//reads an incoming int from the raspberry via serial
 int readInt(){
   int num=0;
-  int len=Wire.read();
-  Serial.println("len:");
-  Serial.println(len);
-  for(int i=0;i<len;i++){
-    int b=Wire.read();
-    Serial.print("b ");
-    Serial.println(b);
-    num=((num>>8) | (b<<((len-1)*8)));
-    Serial.println(num);
+  Serial.println("in readInt");
+  for(int i=0;i<3;i++){
+    while (PiSerial.available() == 0);
+    int b=PiSerial.read();
+    num=((num>>8) | (b<<((3-1)*8)));
+  }
+  if (num>=(std::pow(2,(3*8-1)))){
+    num-=std::pow(2,(3*8));
   }
   Serial.println(num);
-  if (num>=(std::pow(2,(len*8-1)))){
-    num-=std::pow(2,(len*8));
-  }
   return num;
 }
+
 void steer(int percentage){
-  int duty=-1;
-  if(percentage>0){
-    duty=(SERVO_MAX-SERVO_CENT)*abs(percentage)/100+SERVO_CENT;
-  } else {
-    duty=SERVO_CENT-(SERVO_CENT-SERVO_MIN)*abs(percentage)/100;
-  }
-  if(duty>SERVO_MAX) {duty=SERVO_MAX;}
-  if(duty<SERVO_MIN) {duty=SERVO_MIN;}
-  ledcWrite(spwm_channel,duty);
+  steerPercentage=percentage;
+}
+//Send packet containing all data collected by th ESP to the Raspberry Pi via Serial protocol
+void sendPacket() {
+  PiSerial.write('E'); //1
+  PiSerial.write('S'); //2
+  PiSerial.write('P'); //3
+  PiSerial.write(conn_state); //4
+  sendInt(absYaw); //8
+  sendInt(posL); //12
+  sendInt(posR); //16
+  PiSerial.write(vMode); //17
+  PiSerial.write(sMode); //18
+  sendInt(speed); //22
+  sendInt(log_var); //26 bytes per packet
 }
 //main loop
 void loop() {
   int t=millis();
   BNO08x_RVC_Data heading;
-  log_var=conn_state;
+  log_var=t-heartBeatT0;
   //checks if there is new gyro data available, if yes, updates internal absyaw variable. Also prevents the gyro from looping around
   if (rvc.read(&heading)) {
     newYaw=heading.yaw*10; //data is in .1 degrees
@@ -390,15 +428,77 @@ void loop() {
       absYaw=newYaw+yawOffset;
       lastYaw=newYaw;
     }
+    sendPacket();
   }
-  
+  if (PiSerial.available()){
+    int command=PiSerial.read();  
+    if (conn_state==STATUS_CONNECTED){
+      switch(command){
+        case CMD_STEER:
+          steer(readInt());
+          break;
+        case CMD_SET_SERVO_CENT:
+          SERVO_CENT=readInt();
+          break;
+        case CMD_SET_SERVO_MAX:
+          SERVO_MAX=readInt();
+          break;
+        case CMD_SET_SERVO_MIN:
+          SERVO_MIN=readInt();
+          break;
+        case CMD_HEARTBEAT:
+          //resets last heartbeat 
+          conn_state=STATUS_CONNECTED;
+          setLedStatus(STATUS_CONNECTED);
+          heartBeatT0=millis();
+          break;
+        case CMD_SET_VMODE:
+        {
+          Serial.println("set vmode");
+          int data=readInt();
+          //checks if vmode is valid
+          if(data==V_FORWARD || data==V_BACKWARD || data==V_BRAKE || data==V_STOP || data==V_UNREGULATED){
+            vMode=data;
+          }
+        }
+          break;
+        case CMD_SET_TARGETSPEED:
+          targetSpeed=readInt();
+          break;
+        case CMD_SET_SMODE:
+        {
+          int data=readInt();
+          Serial.println("smode");
+          if(data==S_NONE || data==S_GYRO){
+            sMode=data;
+          }
+        }
+          break;
+        case CMD_SET_BREAKPERCENT:
+          brakePowerPercent=readInt();
+          break;
+        case CMD_SET_TARGET_YAW:
+          targetYaw=readInt();
+          break;
+        case CMD_SET_UNREG:
+          Serial.println("set unreg");
+          unregPower=readInt();
+          break;
+      }
+    } else {
+      if (command==CMD_HEARTBEAT){
+        //resets last heartbeat 
+          conn_state=STATUS_CONNECTED;
+          setLedStatus(STATUS_CONNECTED);
+          heartBeatT0=millis();
+      }
+    }
+    
+  }
   int hb=heartBeatT0;
-  //Heartbeat detetction, if the raspberry hasn't sent a hearrtbeat command in .2 seconds it assumes the program on the pi may have crashed or stopped
-  if((conn_state==STATUS_CONNECTED) && (t-hb)>200) {
-    Serial.println("dc");
-    Serial.println(t);
-    Serial.println(hb);
-    Serial.println((t-hb));
+  //Heartbeat detetction, if the raspberry hasn't sent a hearrtbeat command in .5 seconds it assumes the program on the pi may have crashed or stopped
+  if((conn_state==STATUS_CONNECTED) && (t-hb)>500) {
+    Serial.println("disconnect!");
     disconnect();
   }
   if(t-lastUSread>US_DELAY){
@@ -406,97 +506,4 @@ void loop() {
     lastUSread=t;
   }
 
-}
-//On command received from raspberry
-void onI2CReceive(int byteCount){
-  int command=Wire.read();
-  // Serial.println("comm:");
-  // Serial.println(command);
-  switch(command){
-      case CMD_STEER:
-        steer(readInt());
-        break;
-      case CMD_SET_SERVO_CENT:
-        SERVO_CENT=readInt();
-        break;
-      case CMD_SET_SERVO_MAX:
-        SERVO_MAX=readInt();
-        break;
-        case CMD_SET_SERVO_MIN:
-        SERVO_MIN=readInt();
-        break;
-      case CMD_SYNC:
-        // digitalWrite(LED_PIN,HIGH);
-        if(conn_state!=STATUS_CONNECTED) {
-          i2cResponse=SYNC_CODE;
-          setLedStatus(STATUS_CONNECTED);
-          conn_state=STATUS_CONNECTED;
-          heartBeatT0=millis();
-        }
-          
-        break;
-      case CMD_HEARTBEAT:
-        //resets last heartbeat time
-        if(conn_state==STATUS_CONNECTED){
-          heartBeatT0=millis();
-        }
-        break;
-      case CMD_LOG:
-        i2cResponse=readInt();
-        // sendInt(i2cResponse);
-        // Serial.print("rec: ");
-        // Serial.println(i2cResponse);
-        break;
-      case CMD_SET_VMODE:
-      {
-        int data=readInt();
-        //checks if vmode is valid
-        if(data==V_FORWARD || data==V_BACKWARD || data==V_BRAKE || data==V_STOP){
-          vMode=data;
-        }
-      }
-        break;
-      case CMD_SET_TARGETSPEED:
-        targetSpeed=readInt();
-        break;
-      case CMD_DATA_ABS_GYRO:
-        i2cResponse=absYaw;
-        break;
-      case CMD_DATA_POSAVG:
-        i2cResponse=posAvg;
-        break;
-      case CMD_DATA_POSL:
-        i2cResponse=posL;
-        break;
-      case CMD_DATA_POSR:
-        i2cResponse=posR;
-        break;
-      case CMD_DATA_SPEED:
-        i2cResponse=speed;
-        break;
-      case CMD_DATA_VMODE:
-        i2cResponse=vMode;
-        break;
-      case CMD_SET_SMODE:
-      {
-        int data=readInt();
-        if(data==S_NONE || data==S_GYRO){
-          sMode=data;
-        }
-      }
-        break;
-      case CMD_SET_BREAKPERCENT:
-        brakePowerPercent=readInt();
-        break;
-      case CMD_SET_TARGET_YAW:
-        targetYaw=readInt();
-        break;
-      case CMD_DATA_US:
-        i2cResponse=distance/100;
-        break;
-  }
-}
-//if the raspberry pi also expects a response via i2c it sends the previously stored i2cResponse variable
-void onI2CRequest(){
-  sendInt(i2cResponse);
 }

@@ -47,18 +47,9 @@ class main_log():
     
     def critical(self,message):
         """Saves and formats any message to the critcal file which is used, when an exception occurs."""
-        with open(Path.joinpath(directory,"logs","critcal.stormslog"),"a") as file:
+        with open(Path.joinpath(directory,"logs","critical.stormslog"),"a") as file:
             file.write(f"\n<CRITICAL - {self.section} - {datetime.datetime.now().strftime('%H:%M:%S.%f')}>\n\n{message}\n")
             file.flush()
-    
-    def thread_error(self,err):
-        """Handles exceptions on threads."""
-        self.critical(''.join(traceback.format_exception(err.exc_type, err.exc_value, err.exc_traceback)))
-    
-    def main_error(self,a,b,c):
-        """Handles exceptions on the main thread."""
-        self.critical(''.join(traceback.format_exception(a,b,c)))
-    
     def debug(self,message):
         """Debug logging level, saves to both the main and temporary log files."""
         self.log_save(message,"DEBUG")
@@ -100,8 +91,7 @@ class main_log():
     fatal = critical
     """Alternative version of main_log.critical."""
     
-    sys.excepthook = main_error
-    threading.excepthook = thread_error
+    
     
     def close(self,func,register = True):
         """Function that can be used to register and unregister other functions to run upon standard exit without exception."""
@@ -128,4 +118,15 @@ class main_log():
         
         
 log = main_log()
+
+def thread_error(err):
+    """Handles exceptions on threads."""
+    log.critical(''.join(traceback.format_exception(err.exc_type, err.exc_value, err.exc_traceback)))
+    
+def main_error(a,b,c):
+    """Handles exceptions on the main thread."""
+    log.critical(''.join(traceback.format_exception(a,b,c)))
+    
+sys.excepthook = main_error
+threading.excepthook = thread_error
 """Instance of main_log"""
