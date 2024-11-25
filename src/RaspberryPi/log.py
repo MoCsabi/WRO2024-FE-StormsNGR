@@ -46,7 +46,7 @@ class main_log():
     
     
     def critical(self,message):
-        """Saves and formats any message to the critcal file which is used, when an exception occurs."""
+        """Saves and formats any message to the critical file which is used, when an exception occurs."""
         with open(Path.joinpath(directory,"logs","critical.stormslog"),"a") as file:
             file.write(f"\n<CRITICAL - {self.section} - {datetime.datetime.now().strftime('%H:%M:%S.%f')}>\n\n{message}\n")
             file.flush()
