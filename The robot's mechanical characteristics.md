@@ -38,7 +38,7 @@ For this test we had our robot go in a straight line until it got in a 50 cm dis
 
 ![distance](distance.webp)
 
-This data at first seems to be chaotic but after thinking about it there is a very reasonable explanation for this behavior. The lidar sensor spins around 10 times per second. This means that when the robot goes with, for example 48 cm/s, in one revolution or between two measurements, it could go 4.8 cms, **so it depends on both the speed and the lidar's current position.** Thankfully this deviation does not add up, because we are getting a new measurement at every turn. Also for the open challenge we made it so **a 5 cm deviation can't cause any problems** and and for the obstacle challenge we are going slowly most of the time **immensely reducing the maximum amount of deviation** we could get.
+This data at first seems to be chaotic but after thinking about it there is a very reasonable explanation for this behavior. The lidar sensor spins around 10 times per second. This means that when the robot goes with, for example 48 cm/s, in one revolution or between two measurements, it could go 4.8 cms, **so it depends on both the speed and the lidar's current position.** Thankfully this deviation does not add up, because we are getting a new measurement at every turn. Also for the open challenge we made it so **a 5 cm deviation can't cause any problems** and for the obstacle challenge we are going slowly most of the time **immensely reducing the maximum amount of deviation** we could get.
 
 ## Brake distance at varying speeds
 
