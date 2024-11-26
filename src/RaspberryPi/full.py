@@ -603,7 +603,7 @@ PARKSIDE_LATE=1
 '''Parking space is at the end of the section'''
 
 ARC_OFFSET_CM_LONG=1
-ARC_OFFSET_CM_SHORT=0 #-3
+ARC_OFFSET_CM_SHORT=-3 #during a short arc go this much less
 SETLANE_SHORT_LIMIT=20
 SETLANE_MINIMUM=3
 '''How many centimeters the robot gets closer to the wall while turning its steering wheel. Approximation.'''
@@ -803,7 +803,9 @@ DISPLAY_ANGLE_FROM_WALL=7
 SERVO_MAX=435
 SERVO_MIN=228
 SERVO_SAFE_MAX=SERVO_MAX-1
-SERVO_SAFE_MIN=SERVO_MIN+20
+SERVO_SAFE_MIN=SERVO_MIN+9
+
+#ARC RIGHT and ARC LEFT diameter (rear axle center-rear axle center)=45 cm
 
 EMERGENCY_START_PIN=4
 
@@ -1299,20 +1301,7 @@ def testRun():
     global parkPos, parkSide, section
     global leftLaneOffset, rightLaneOffset
     initLoop(open=False)
-    time0=time.time()
-    arc(90,3000)
-    stop()
-    while not TM.switches[0]: sleep(0.1)
-    arc(180,1000)
-    stop()
-    while not TM.switches[0]: sleep(0.1)
-    arc(270,1500)
-    stop()
-    while not TM.switches[0]: sleep(0.1)
-    arc(360,2000)
-    stop()
-    while not TM.switches[0]: sleep(0.1)
-    arc(450,2500)
+    arc(179,defaultSpeed)
     stop()
 obstacleChallengeRun() #We start the obstacle challenge run
 stop()
