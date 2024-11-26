@@ -802,6 +802,7 @@ DISPLAY_ANGLE_FROM_WALL=7
 #Diameter of 70
 SERVO_MAX=435
 SERVO_MIN=228
+SERVO_CENT=322 #325
 SERVO_SAFE_MAX=SERVO_MAX-1
 SERVO_SAFE_MIN=SERVO_MIN+9
 
@@ -841,6 +842,7 @@ def initLoop(open=False):
     getRawHeading()
     setServoMin(SERVO_SAFE_MIN) #SERVO SAFE LIMIT
     setServoMax(SERVO_SAFE_MAX) #SERVO SAFE LIMIT
+    setServoCent(SERVO_CENT)
     log.info("SET")
     sleep(0.2)
     heading0=getRawHeading()/10
@@ -1301,7 +1303,8 @@ def testRun():
     global parkPos, parkSide, section
     global leftLaneOffset, rightLaneOffset
     initLoop(open=False)
-    arc(179,defaultSpeed)
+    go(defaultSpeed,0)
+    waitAbsLidar(0,30)
     stop()
 obstacleChallengeRun() #We start the obstacle challenge run
 stop()
