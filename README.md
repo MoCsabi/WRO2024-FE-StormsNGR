@@ -1,3 +1,16 @@
+# Preface
+![first place](P1450353.JPG)
+As you may know (since you are visiting this documentation 😉) we are the WRO Future Engineers 2024 world champions 🎉. This documentation won us the championship with a score of 28 points, the competition was fierce.
+
+A breakdown of our score:
+
+![breakdown of points](image-1.png)
+
+This can be viewed online [here](https://scoring.wro-association.org/en/fe2022/fe2022/sheet/show/18872/DOCUMENTATION).
+
+The documentation will be kept up and public for the foreseeable future, we will be updating it as we keep developing the robot in our second year. We hope you find this useful, get inspired by it or take some core ideas and implement them into your own solution!
+
+Once again, we are insanely happy, and congratulations to all competing teams!
 # Table of contents
 ### [Our journey](#our-journey)
 ### [Ideas and principles](/Ideas_and_principles.md)
