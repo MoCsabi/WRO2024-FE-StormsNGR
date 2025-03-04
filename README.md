@@ -11,6 +11,9 @@ This can be viewed online [here](https://scoring.wro-association.org/en/fe2022/f
 The documentation will be kept up and public for the foreseeable future, we will be updating it as we keep developing the robot in our second year. We hope you find this useful, get inspired by it or take some core ideas and implement them into your own solution!
 
 Once again, we are insanely happy, and congratulations to all competing teams!
+
+## 2025 season
+We will be keeping this repository as it is, and will be documenting our development process and preparations on a seperate, [2025 season repository](https://github.com/MoCsabi/WRO2025-FE-StormsNGR)
 # Table of contents
 ### [Our journey](#our-journey)
 ### [Ideas and principles](/Ideas_and_principles.md)
